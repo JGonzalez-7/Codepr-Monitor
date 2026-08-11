@@ -4,7 +4,10 @@
 {% block content %}
 <div class="page-head">
   <h1>Users</h1>
-  <p>Create an account and choose which pages it can see and raise tickets about.</p>
+  <p>
+    Create an account, edit its details, choose which pages it can see, and sign
+    in as it to check what it sees.
+  </p>
 </div>
 
 {% if notice %}
@@ -59,8 +62,12 @@
       </div>
 
       <div class="check-row">
-        <label><input type="checkbox" name="is_admin" value="true"> Administrator (sees every page)</label>
+        <label><input type="checkbox" name="is_admin" value="true"> Administrator</label>
       </div>
+      <p class="hint">
+        An administrator sees every page, the ticket queue, and this screen, and can
+        sign in as any other user. Page assignments above are ignored for them.
+      </p>
 
       <button class="btn" type="submit">Create user</button>
     </form>
@@ -70,18 +77,74 @@
 <div class="section">
   <h2>Existing users</h2>
   {% for account in users %}
+    {% set is_me = account.id in protected_ids %}
     <div class="site-editor">
-      <form method="post" action="/admin/users/{{ account.id }}/access">
-        <div class="user-head">
-          <div>
-            <strong>{{ account.full_name }}</strong>
-            <div class="muted">{{ account.username }}{% if account.email %} · {{ account.email }}{% endif %}</div>
-          </div>
+      <div class="user-head">
+        <div>
+          <strong>{{ account.full_name }}</strong>
+          <div class="muted">{{ account.username }}{% if account.email %} · {{ account.email }}{% endif %}</div>
+        </div>
+        <div class="user-actions">
           {% if account.is_admin %}
             <span class="tag resolved">Administrator</span>
           {% endif %}
+          {% if is_me %}
+            <span class="tag fix">You</span>
+          {% else %}
+            <form method="post" action="/admin/users/{{ account.id }}/impersonate">
+              <button class="btn btn-ghost" type="submit">Sign in as {{ account.username }}</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <form method="post" action="/admin/users/{{ account.id }}">
+        <div class="editor-grid">
+          <div class="field">
+            <label for="username-{{ account.id }}">Username</label>
+            <input type="text" id="username-{{ account.id }}" name="username" required
+                   value="{{ account.username }}" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="full-name-{{ account.id }}">Full name</label>
+            <input type="text" id="full-name-{{ account.id }}" name="full_name" required
+                   value="{{ account.full_name }}">
+          </div>
         </div>
 
+        <div class="editor-grid">
+          <div class="field">
+            <label for="email-{{ account.id }}">Email</label>
+            <input type="text" id="email-{{ account.id }}" name="email"
+                   value="{{ account.email }}" placeholder="person@example.com">
+          </div>
+          <div class="field">
+            <label for="password-{{ account.id }}">New password</label>
+            <input type="password" id="password-{{ account.id }}" name="password"
+                   minlength="{{ min_password_length }}" autocomplete="new-password">
+            <p class="hint">Leave blank to keep the current password.</p>
+          </div>
+        </div>
+
+        <div class="check-row">
+          {% if is_me %}
+            {# Submitted for this row so an admin can still edit their own name and
+               email; the server refuses to strip its own session's admin access. #}
+            <input type="hidden" name="is_admin" value="true">
+            <span class="muted">Administrator — you cannot remove this from your own account.</span>
+          {% else %}
+            <label>
+              <input type="checkbox" name="is_admin" value="true"
+                     {{ 'checked' if account.is_admin }}>
+              Administrator
+            </label>
+          {% endif %}
+        </div>
+
+        <button class="btn" type="submit">Save details</button>
+      </form>
+
+      <form method="post" action="/admin/users/{{ account.id }}/access">
         {% if account.is_admin %}
           <p class="hint">Administrators see every page, so there is nothing to assign.</p>
         {% else %}

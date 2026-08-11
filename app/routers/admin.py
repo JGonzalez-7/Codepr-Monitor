@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -15,8 +16,11 @@ from ..models import Check, Site, Ticket, TicketStatus, User
 from ..monitor import check_all_sites
 from ..odoo import sync_ticket
 from ..presenters import build_site_cards, summarize
-from ..security import hash_password, require_admin
+from ..security import get_impersonator, hash_password, require_admin, set_session
 from ..templating import templates
+from .auth import landing_for
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 settings = get_settings()
@@ -192,11 +196,25 @@ USERNAME_RE = re.compile(r"^[a-z0-9_.-]{3,64}$")
 MIN_PASSWORD_LENGTH = 10
 
 
+def _protected_ids(admin: User, impersonator: User | None) -> set[int]:
+    """Accounts this session must not be able to strip admin from.
+
+    Demoting yourself is how an installation ends up with no administrator at
+    all; demoting the admin behind an impersonation would invalidate the session
+    doing the demoting. Both are refused rather than explained afterwards.
+    """
+    ids = {admin.id}
+    if impersonator is not None:
+        ids.add(impersonator.id)
+    return ids
+
+
 def _render_users(
     request: Request,
     db: Session,
     admin: User,
     *,
+    impersonator: User | None = None,
     error: str | None = None,
     notice: str | None = None,
     status_code: int = 200,
@@ -213,18 +231,53 @@ def _render_users(
             "error": error,
             "notice": notice,
             "min_password_length": MIN_PASSWORD_LENGTH,
+            "protected_ids": _protected_ids(admin, impersonator),
         },
         status_code=status_code,
     )
+
+
+def _account_error(
+    db: Session,
+    *,
+    username: str,
+    full_name: str,
+    password: str,
+    password_required: bool,
+    exclude_id: int | None = None,
+) -> str | None:
+    """Validate the fields create and edit have in common.
+
+    On edit a blank password means "leave it alone", so it is only measured when
+    it is required or when one was actually typed.
+    """
+    if not USERNAME_RE.match(username):
+        return (
+            "Usernames are 3–64 characters, lowercase letters, digits, "
+            "dot, dash, or underscore."
+        )
+
+    clash = db.scalar(select(User).where(User.username == username))
+    if clash is not None and clash.id != exclude_id:
+        return f"The username {username} is taken."
+
+    if not full_name:
+        return "Add the person's full name."
+
+    if (password_required or password) and len(password) < MIN_PASSWORD_LENGTH:
+        return f"Passwords must be at least {MIN_PASSWORD_LENGTH} characters."
+
+    return None
 
 
 @router.get("/users", response_class=HTMLResponse)
 def manage_users(
     request: Request,
     user: User = Depends(require_admin),
+    impersonator: User | None = Depends(get_impersonator),
     db: Session = Depends(get_db),
 ):
-    return _render_users(request, db, user)
+    return _render_users(request, db, user, impersonator=impersonator)
 
 
 @router.post("/users")
@@ -237,41 +290,23 @@ def create_user(
     is_admin: bool = Form(False),
     site_ids: list[int] = Form(default=[]),
     user: User = Depends(require_admin),
+    impersonator: User | None = Depends(get_impersonator),
     db: Session = Depends(get_db),
 ):
-    """Create a client account and grant it the pages it should see."""
+    """Create an account, optionally as an admin, and grant it its pages."""
     username = username.strip().lower()
     full_name = full_name.strip()
 
-    if not USERNAME_RE.match(username):
+    error = _account_error(
+        db,
+        username=username,
+        full_name=full_name,
+        password=password,
+        password_required=True,
+    )
+    if error:
         return _render_users(
-            request,
-            db,
-            user,
-            error=(
-                "Usernames are 3–64 characters, lowercase letters, digits, "
-                "dot, dash, or underscore."
-            ),
-            status_code=400,
-        )
-
-    if db.scalar(select(User).where(User.username == username)) is not None:
-        return _render_users(
-            request, db, user, error=f"The username {username} is taken.", status_code=400
-        )
-
-    if not full_name:
-        return _render_users(
-            request, db, user, error="Add the person's full name.", status_code=400
-        )
-
-    if len(password) < MIN_PASSWORD_LENGTH:
-        return _render_users(
-            request,
-            db,
-            user,
-            error=f"Passwords must be at least {MIN_PASSWORD_LENGTH} characters.",
-            status_code=400,
+            request, db, user, impersonator=impersonator, error=error, status_code=400
         )
 
     granted = db.scalars(select(Site).where(Site.id.in_(site_ids))).all() if site_ids else []
@@ -289,9 +324,20 @@ def create_user(
     db.add(account)
     db.commit()
 
-    what = "an admin" if is_admin else f"{len(granted)} page(s)"
+    if is_admin:
+        log.info("Admin %s created administrator account %s", user.username, username)
+
+    role = (
+        "administrator access"
+        if is_admin
+        else f"access to {len(granted)} page(s)"
+    )
     return _render_users(
-        request, db, user, notice=f"Created {username} with {what}."
+        request,
+        db,
+        user,
+        impersonator=impersonator,
+        notice=f"Created {username} with {role}.",
     )
 
 
@@ -301,13 +347,19 @@ def update_user_access(
     user_id: int,
     site_ids: list[int] = Form(default=[]),
     user: User = Depends(require_admin),
+    impersonator: User | None = Depends(get_impersonator),
     db: Session = Depends(get_db),
 ):
     """Replace the set of pages a user can see and raise tickets about."""
     account = db.get(User, user_id)
     if account is None:
         return _render_users(
-            request, db, user, error="That account no longer exists.", status_code=404
+            request,
+            db,
+            user,
+            impersonator=impersonator,
+            error="That account no longer exists.",
+            status_code=404,
         )
 
     account.sites = list(db.scalars(select(Site).where(Site.id.in_(site_ids))).all()) if site_ids else []
@@ -317,8 +369,141 @@ def update_user_access(
         request,
         db,
         user,
+        impersonator=impersonator,
         notice=f"Updated the pages {account.username} can see.",
     )
+
+
+@router.post("/users/{user_id}")
+def update_user_profile(
+    request: Request,
+    user_id: int,
+    username: str = Form(""),
+    full_name: str = Form(""),
+    email: str = Form(""),
+    password: str = Form(""),
+    is_admin: bool = Form(False),
+    user: User = Depends(require_admin),
+    impersonator: User | None = Depends(get_impersonator),
+    db: Session = Depends(get_db),
+):
+    """Edit an account's details, its role, and optionally its password."""
+    account = db.get(User, user_id)
+    if account is None:
+        return _render_users(
+            request,
+            db,
+            user,
+            impersonator=impersonator,
+            error="That account no longer exists.",
+            status_code=404,
+        )
+
+    username = username.strip().lower()
+    full_name = full_name.strip()
+
+    error = _account_error(
+        db,
+        username=username,
+        full_name=full_name,
+        password=password,
+        password_required=False,
+        exclude_id=account.id,
+    )
+    if error:
+        return _render_users(
+            request, db, user, impersonator=impersonator, error=error, status_code=400
+        )
+
+    if not is_admin and account.id in _protected_ids(user, impersonator):
+        return _render_users(
+            request,
+            db,
+            user,
+            impersonator=impersonator,
+            error=(
+                "You cannot remove administrator access from the account you are "
+                "signed in with. Ask another administrator to do it."
+            ),
+            status_code=400,
+        )
+
+    was_admin = account.is_admin
+    account.username = username
+    account.full_name = full_name[:128]
+    account.email = email.strip()[:255]
+    account.is_admin = is_admin
+
+    changed_password = bool(password)
+    if changed_password:
+        # Same rule as creation: hashed here, never stored or echoed back.
+        account.password_hash = hash_password(password)
+
+    db.commit()
+
+    if was_admin != is_admin:
+        log.info(
+            "Admin %s %s administrator access for %s",
+            user.username,
+            "granted" if is_admin else "revoked",
+            account.username,
+        )
+
+    suffix = " Password reset." if changed_password else ""
+    return _render_users(
+        request,
+        db,
+        user,
+        impersonator=impersonator,
+        notice=f"Updated {account.username}.{suffix}",
+    )
+
+
+@router.post("/users/{user_id}/impersonate")
+def impersonate_user(
+    request: Request,
+    user_id: int,
+    user: User = Depends(require_admin),
+    impersonator: User | None = Depends(get_impersonator),
+    db: Session = Depends(get_db),
+):
+    """Swap the session over to another account, keeping the way back.
+
+    The admin's own id rides along in the signed cookie, so the session is
+    genuinely the other user — every access check answers as it would for them —
+    and only `/impersonate/stop` restores it. Where an impersonation is already
+    running, the original admin stays the one to return to, so the chain cannot
+    be used to launder a session into a different admin.
+    """
+    account = db.get(User, user_id)
+    if account is None:
+        return _render_users(
+            request,
+            db,
+            user,
+            impersonator=impersonator,
+            error="That account no longer exists.",
+            status_code=404,
+        )
+
+    real_admin = impersonator or user
+    if account.id == real_admin.id:
+        return _render_users(
+            request,
+            db,
+            user,
+            impersonator=impersonator,
+            error="That is your own account — you are already signed in as it.",
+            status_code=400,
+        )
+
+    log.warning(
+        "Admin %s started acting as %s", real_admin.username, account.username
+    )
+
+    response = RedirectResponse(landing_for(account), status_code=303)
+    set_session(response, account, impersonator=real_admin)
+    return response
 
 
 # --- Uptime Kuma ---------------------------------------------------------

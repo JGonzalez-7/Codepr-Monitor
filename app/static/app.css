@@ -158,6 +158,25 @@ a { color: var(--accent); }
 .banner strong { font-size: 1.02rem; }
 .banner .banner-sub { color: inherit; opacity: .85; font-size: .9rem; }
 
+/* --- Impersonation ---------------------------------------------------- */
+
+/* Full-bleed and directly under the top bar, because the rest of the page is
+   deliberately indistinguishable from what the other user sees. */
+.impersonating {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: .7rem 1.5rem;
+  background: var(--degraded-bg);
+  color: var(--degraded);
+  border-bottom: 1px solid color-mix(in srgb, var(--degraded) 40%, var(--border));
+  font-size: .9rem;
+}
+
+.impersonating form { margin-left: auto; }
+.impersonating .btn { border-color: color-mix(in srgb, var(--degraded) 45%, var(--border)); }
+
 /* --- Status cards ----------------------------------------------------- */
 
 .card-grid {
@@ -324,7 +343,20 @@ input[type="file"]::file-selector-button:hover { border-color: var(--accent); co
   margin-bottom: 1rem;
 }
 
-.user-head .tag { margin-left: auto; }
+.user-head .user-actions {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin-left: auto;
+}
+
+/* Details and page access are two separate forms on one card; the rule keeps
+   them from reading as one. */
+.site-editor form + form {
+  margin-top: 1.4rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--border);
+}
 
 /* Attached screenshots, shown on both the client and admin ticket lists. */
 .thumbs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }

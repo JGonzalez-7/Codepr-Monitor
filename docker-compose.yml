@@ -1,20 +1,45 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: codepr_monitor
+      POSTGRES_USER: codepr
+      # Compose reads this from .env, which is gitignored. The :? form makes the
+      # stack refuse to start with a clear message rather than quietly bringing
+      # up a database with a password nobody chose.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - monitor-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      # The app fails its first connection if it starts before Postgres is
+      # accepting them, so `app` waits on this rather than on the container.
+      test: ["CMD-SHELL", "pg_isready -U codepr -d codepr_monitor"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
   app:
     build: .
     env_file:
       - .env
     environment:
-      # SQLite, on the named volume below. Four slashes: sqlite://// means an
-      # absolute path. Nothing else in the app is database-specific, so pointing
-      # this at postgresql+psycopg://... is all it takes to move back.
-      DATABASE_URL: sqlite:////srv/data/codepr_monitor.db
+      # PostgreSQL, on the named volume below. `environment` wins over
+      # `env_file`, so a DATABASE_URL left in .env for local runs does not
+      # redirect the container at a SQLite file.
+      DATABASE_URL: postgresql+psycopg://codepr:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/codepr_monitor
       # No SECRETS.md here on purpose — nothing writes credentials into the
       # container. Set SEED_ADMIN_PASSWORD and SEED_USER_PASSWORD in .env so you
       # already know the seeded passwords when running this stack.
     volumes:
-      # The database file lives here. Without this mount it would sit in the
-      # container filesystem and be destroyed by the next image rebuild.
-      - monitor-sqlite-data:/srv/data
+      # The old SQLite database, read-only, so migrate_to_postgres.py can be run
+      # from this container. Safe to drop this mount and the volume once the
+      # copy is done and verified.
+      - monitor-sqlite-data:/srv/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8090:8000"   # CodePR-Monitor -> http://localhost:8090
     restart: unless-stopped
@@ -30,5 +55,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  monitor-pg-data:
+  # Kept so the pre-migration data is still on disk. Remove once the copy into
+  # PostgreSQL has been verified.
   monitor-sqlite-data:
   uptime-kuma-data:

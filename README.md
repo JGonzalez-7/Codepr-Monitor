@@ -11,7 +11,8 @@ dashboard, an embedded Uptime Kuma, and ticket mirroring into Odoo.
 
 ## Stack
 
-FastAPI · Jinja2 · SQLAlchemy · SQLite (WAL) · Uptime Kuma · Docker Compose
+FastAPI · Jinja2 · SQLAlchemy · PostgreSQL 16 (SQLite for local runs) ·
+Uptime Kuma · Docker Compose
 
 ## How to run this app
 
@@ -21,7 +22,7 @@ FastAPI · Jinja2 · SQLAlchemy · SQLite (WAL) · Uptime Kuma · Docker Compose
 cp .env.example .env
 ```
 
-### Step 2 — Add a signing key
+### Step 2 — Add a signing key and a database password
 
 Generate a random key:
 
@@ -31,6 +32,11 @@ python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 
 Open `.env` and paste the result after `SECRET_KEY=`. Without this, login
 sessions can be forged.
+
+Set `POSTGRES_PASSWORD=` in the same file to something you choose. The stack
+refuses to start without it, and it is the password the database actually uses —
+change it from the example value before the first `docker compose up`, because
+changing it later does not change the password already stored in the volume.
 
 ### Step 3 — Start it
 
@@ -80,29 +86,60 @@ docker compose down -v         # stop and erase all data, including accounts
 
 ## The database
 
-One SQLite file, on the `monitor-sqlite-data` volume at
-`/srv/data/codepr_monitor.db` inside the container. There is no database
-service to run.
+**PostgreSQL 16**, as the `db` service, on the `monitor-pg-data` volume. The app
+reaches it over `DATABASE_URL`, set in `docker-compose.yml` — you do not need to
+set it yourself. `app` waits on the database's healthcheck before it starts, so
+a cold `docker compose up` does not race the first connection.
 
-It opens in **WAL** mode, so the 60-second check does not block the status page,
-with a 30-second busy timeout so a check and a ticket submission never collide
-into a "database is locked" error. `PRAGMA foreign_keys=ON` is set on every
-connection — SQLite ignores foreign keys otherwise, and the attachment cascade
-depends on them.
+Running the app **without Docker still uses SQLite**, so local development needs
+no database server. See [Running it without Docker](#running-it-without-docker).
+Nothing in the app is engine-specific; only `DATABASE_URL` differs.
 
-**Back it up** by copying the file out. Use `.backup` rather than `cp`: it takes
-a consistent snapshot while the app is still writing.
+**Back it up** with `pg_dump`, which snapshots consistently while the app is
+still writing:
 
 ```bash
-docker compose exec app sqlite3 /srv/data/codepr_monitor.db \
-  ".backup '/srv/data/backup.db'"
-docker compose cp app:/srv/data/backup.db ./codepr_monitor-backup.db
+docker compose exec -T db pg_dump -U codepr codepr_monitor > codepr_monitor-backup.sql
 ```
 
-Nothing in the app is engine-specific. To move back to PostgreSQL, add the
-service back to `docker-compose.yml` and point `DATABASE_URL` at it —
-`psycopg` is still in `requirements.txt`. `migrate_to_sqlite.py` shows the shape
-of the copy in the other direction.
+Restore into an empty database with:
+
+```bash
+docker compose exec -T db psql -U codepr -d codepr_monitor < codepr_monitor-backup.sql
+```
+
+To query it directly — the psql prompt, or point a SQL client at the `db`
+service:
+
+```bash
+docker compose exec db psql -U codepr -d codepr_monitor
+```
+
+### Moving an existing SQLite database into PostgreSQL
+
+Skip this on a fresh install; the seed creates the accounts on first boot.
+
+If the stack already ran on SQLite, its accounts, tickets, and screenshots are
+in the `monitor-sqlite-data` volume, and starting on PostgreSQL leaves them
+behind. `migrate_to_postgres.py` copies them over, keeping the password hashes
+so the credentials in `SECRETS.md` still work:
+
+```bash
+docker compose up -d db
+docker compose run --rm \
+  -e SOURCE_DATABASE_URL="sqlite:////srv/data/codepr_monitor.db" \
+  -v "$PWD/migrate_to_postgres.py:/srv/migrate_to_postgres.py:ro" \
+  app python /srv/migrate_to_postgres.py
+```
+
+It prints a row count per table, resets the id sequences, and refuses to run
+against a non-empty target — it is a move, not a sync, so running it twice would
+double every row.
+
+Once the copy is verified, none of it has a purpose any more: delete
+`migrate_to_postgres.py`, and drop the read-only `monitor-sqlite-data` mount on
+the `app` service along with the volume declaration at the bottom of
+`docker-compose.yml`.
 
 ---
 
@@ -124,14 +161,17 @@ Then open http://localhost:8090. A local run writes `SECRETS.md` to this folder
 listing the seeded accounts.
 
 This starts the app only — Uptime Kuma is not included, so the `/admin/kuma`
-page will be empty. It is the same database engine the Docker stack uses; only
-the file location differs.
+page will be empty. It is also a different database from the Docker stack's:
+this one is a local SQLite file with its own seeded accounts, so nothing you do
+here touches the deployed data.
 
 ### If something goes wrong
 
 | Problem | Fix |
 | --- | --- |
 | `port is already allocated` | Something else uses 8090 or 3001. Change the left-hand number in `docker-compose.yml` under `ports`. |
+| `required variable POSTGRES_PASSWORD is missing a value` | Set `POSTGRES_PASSWORD=` in `.env`. The stack will not start without one. |
+| `password authentication failed for user "codepr"` | `POSTGRES_PASSWORD` was changed after the volume was created. The database keeps the original. Put the old value back, or run `docker compose down -v` to start over — that erases all data. |
 | Forgot the passwords | They are in `SECRETS.md` and in `.env`. If both are gone, set new `SEED_*` values in `.env` and run `docker compose down -v`, then start again — this erases all data, including tickets. |
 | Every page shows "Offline" | The app has no internet access from inside the container. |
 
@@ -173,6 +213,38 @@ body and a dropdown is not a security boundary.
 Those grants apply when an account is **created**. Assignments are never
 rewritten on restart, so an existing deployment keeps whatever an admin last
 set under Users.
+
+### Managing accounts
+
+Everything below lives on **Users** (`/admin/users`) and is admin-only.
+
+**Creating one.** Fill in the username, full name, email, and a password of at
+least 10 characters, then tick the pages it should hold. Ticking
+**Administrator** creates an admin instead: unrestricted access to every page,
+the ticket queue, this screen, and the ability to sign in as other users. Page
+ticks are ignored for an admin, who is unrestricted by rule rather than by
+assignment. The password is hashed on save and never shown again, so pass it on
+before leaving the page.
+
+**Editing one.** Each account has a **Save details** form for its username, full
+name, email, and role. Leave the password box blank to keep the current
+password, or type a new one to reset it — there is no way to read the old one
+back. Promoting or demoting an account is the same checkbox as at creation, with
+one exception: you cannot remove administrator access from the account you are
+signed in with, so an installation cannot be locked out of its own admin area.
+Ask another administrator to do it.
+
+**Signing in as someone.** **Sign in as \<username\>** hands your session to that
+account so you see exactly what they see — their pages, their tickets, their
+empty states. A banner stays across the top of every page for as long as it
+lasts, and **Back to \<your username\>** returns you.
+
+While it is active you *are* that user: an admin acting as a client loses the
+admin area until they switch back, and anything submitted is recorded as the
+client, not as you. Both ends are written to the application log. The admin
+behind the session is carried in the signed session cookie, which is what makes
+the return trip possible — and if that admin's own access is revoked mid-session,
+the session is dropped rather than left stranded as someone else.
 
 ### Screenshots on tickets
 

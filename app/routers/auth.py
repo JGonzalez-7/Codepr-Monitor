@@ -1,6 +1,8 @@
-"""Login and logout."""
+"""Login, logout, and ending an impersonated session."""
 
 from __future__ import annotations
+
+import logging
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -9,13 +11,21 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import User
-from ..security import clear_session, get_current_user, set_session, verify_password
+from ..security import (
+    clear_session,
+    get_current_user,
+    require_impersonation,
+    set_session,
+    verify_password,
+)
 from ..templating import templates
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["auth"])
 
 
-def _landing_for(user: User) -> str:
+def landing_for(user: User) -> str:
     return "/admin" if user.is_admin else "/status"
 
 
@@ -23,13 +33,13 @@ def _landing_for(user: User) -> str:
 def index(user: User | None = Depends(get_current_user)) -> RedirectResponse:
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    return RedirectResponse(_landing_for(user), status_code=303)
+    return RedirectResponse(landing_for(user), status_code=303)
 
 
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, user: User | None = Depends(get_current_user)):
     if user is not None:
-        return RedirectResponse(_landing_for(user), status_code=303)
+        return RedirectResponse(landing_for(user), status_code=303)
     return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
@@ -51,7 +61,7 @@ def login(
             status_code=401,
         )
 
-    response = RedirectResponse(_landing_for(user), status_code=303)
+    response = RedirectResponse(landing_for(user), status_code=303)
     set_session(response, user)
     return response
 
@@ -60,4 +70,19 @@ def login(
 def logout() -> RedirectResponse:
     response = RedirectResponse("/login", status_code=303)
     clear_session(response)
+    return response
+
+
+@router.post("/impersonate/stop")
+def stop_impersonating(
+    admin: User = Depends(require_impersonation),
+) -> RedirectResponse:
+    """Hand the session back to the admin who started the impersonation.
+
+    This lives here rather than under /admin because the session doing the
+    asking is not an admin one — that is the whole point of it.
+    """
+    log.info("Impersonation ended, session returned to %s", admin.username)
+    response = RedirectResponse(landing_for(admin), status_code=303)
+    set_session(response, admin)
     return response

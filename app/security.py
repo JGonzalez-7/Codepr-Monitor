@@ -34,8 +34,21 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def set_session(response: Response, user: User) -> None:
-    token = _serializer.dumps({"uid": user.id})
+def set_session(
+    response: Response, user: User, *, impersonator: User | None = None
+) -> None:
+    """Sign a session for `user`.
+
+    `impersonator` records the admin behind an impersonated session. It is the
+    only thing that separates "signed in as this person" from "acting as this
+    person", so it is carried inside the signed cookie rather than anywhere the
+    browser could edit.
+    """
+    payload: dict[str, int] = {"uid": user.id}
+    if impersonator is not None:
+        payload["imp"] = impersonator.id
+
+    token = _serializer.dumps(payload)
     response.set_cookie(
         settings.session_cookie_name,
         token,
@@ -53,7 +66,16 @@ def clear_session(response: Response) -> None:
 def get_current_user(
     request: Request, db: Session = Depends(get_db)
 ) -> User | None:
-    """Resolve the signed session cookie to a user, or None."""
+    """Resolve the signed session cookie to the effective user, or None.
+
+    "Effective" matters while an admin is impersonating: this returns the person
+    being acted as, so every permission check in the app — including
+    `require_admin` — measures the impersonated account rather than the admin
+    behind it. The admin is stashed on `request.state.impersonator` for the
+    banner and for the route that ends the impersonation.
+    """
+    request.state.impersonator = None
+
     token = request.cookies.get(settings.session_cookie_name)
     if not token:
         return None
@@ -64,7 +86,32 @@ def get_current_user(
     user_id = data.get("uid")
     if not isinstance(user_id, int):
         return None
-    return db.get(User, user_id)
+
+    user = db.get(User, user_id)
+    if user is None:
+        return None
+
+    impersonator_id = data.get("imp")
+    if impersonator_id is not None:
+        # The cookie is signed, but the standing behind it can be revoked. An
+        # impersonation is only valid while the admin who started it is still an
+        # admin, so a demoted or deleted admin invalidates the whole session
+        # rather than silently leaving their session logged in as someone else.
+        impersonator = (
+            db.get(User, impersonator_id) if isinstance(impersonator_id, int) else None
+        )
+        if impersonator is None or not impersonator.is_admin:
+            return None
+        request.state.impersonator = impersonator
+
+    return user
+
+
+def get_impersonator(
+    request: Request, user: User | None = Depends(get_current_user)
+) -> User | None:
+    """The admin behind an impersonated session, or None for a normal one."""
+    return getattr(request.state, "impersonator", None)
 
 
 def _redirect_to_login() -> HTTPException:
@@ -89,3 +136,20 @@ def require_admin(user: User = Depends(require_user)) -> User:
             detail="This area is restricted to administrators.",
         )
     return user
+
+
+def require_impersonation(
+    impersonator: User | None = Depends(get_impersonator),
+) -> User:
+    """The admin to hand the session back to when impersonation ends.
+
+    Deliberately not behind `require_admin`: an admin acting as a client is not
+    an admin for the length of that session, so the way out cannot sit in the
+    admin area.
+    """
+    if impersonator is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No impersonation is in progress.",
+        )
+    return impersonator

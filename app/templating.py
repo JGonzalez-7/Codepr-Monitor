@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from .models import CheckStatus, TicketStatus
@@ -12,7 +13,20 @@ from .models import CheckStatus, TicketStatus
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+def session_context(request: Request) -> dict[str, object]:
+    """Expose the impersonating admin to every template.
+
+    `get_current_user` records it on the request, so the banner in base.html
+    works on every page without threading a new key through each route's
+    context.
+    """
+    return {"impersonator": getattr(request.state, "impersonator", None)}
+
+
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR), context_processors=[session_context]
+)
 
 # Client-facing wording. "degraded" deliberately avoids claiming the site is up.
 STATUS_LABELS = {

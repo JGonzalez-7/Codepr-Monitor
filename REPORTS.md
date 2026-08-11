@@ -4,6 +4,141 @@ A running log of the work done on this project. Newest entries first.
 
 ---
 
+## 2026-08-11 — Moved the Docker stack back to PostgreSQL
+
+### What changed
+
+- Restored the `db` service in `docker-compose.yml` as `postgres:16-alpine`, on
+  a new `monitor-pg-data` volume, and pointed the app's `DATABASE_URL` at it.
+  Local runs without Docker deliberately stay on SQLite, so development still
+  needs no database server.
+- Gave `db` a `pg_isready` healthcheck and made `app` wait on
+  `condition: service_healthy`. Without it a cold `docker compose up` races the
+  database and the app fails its first connection.
+- Wrote the password as `${POSTGRES_PASSWORD:?...}` in both services rather than
+  giving it a default. Compose now refuses to start with a readable message
+  instead of quietly creating a database with a password nobody chose, and no
+  credential is written into a tracked file.
+- Kept the old `monitor-sqlite-data` volume, mounted read-only on `app`. It is
+  the only copy of the deployed accounts and tickets until the migration below
+  has been run, and it is what that migration reads.
+- Added `migrate_to_postgres.py`, a one-off copy of every row out of SQLite.
+  Two things a plain row copy gets wrong are handled: naive SQLite datetimes are
+  marked UTC before landing in `timestamptz`, which otherwise reads them in the
+  server's timezone; and the id sequences are reset past the copied ids, which
+  otherwise leaves the first new ticket trying to reuse id 1. It refuses to run
+  against a non-empty target, since it is a move rather than a sync.
+- Deleted `migrate_to_sqlite.py`. It existed to perform the move this entry
+  reverses, so it has no remaining purpose; it stays in git history at `a3ac759`.
+- Updated `README.md` (stack, the `POSTGRES_PASSWORD` setup step, a rewritten
+  **The database** section covering `pg_dump` backup/restore and `psql` access, a
+  migration section, and two new troubleshooting rows), `.env.example`,
+  `CLAUDE.md`, `AGENTS.md`, and the now-inaccurate SQLite comments in the
+  `Dockerfile`.
+- No application code changed. `app/db.py` already branched on the URL, applying
+  the SQLite pragmas only when the target is actually SQLite.
+
+### Files touched
+
+`docker-compose.yml`, `migrate_to_postgres.py` (new), `migrate_to_sqlite.py`
+(deleted), `Dockerfile`, `.env.example`, `README.md`, `CLAUDE.md`, `AGENTS.md`.
+
+### Verification
+
+Run against a real `postgres:16-alpine` container, not by inspection:
+
+- Built a SQLite database with the seeded sites and accounts plus a ticket, a
+  screenshot, and a check row, then ran `migrate_to_postgres.py` against
+  PostgreSQL. Verified row counts per table, that the ticket timestamp came back
+  as the exact UTC instant it went in, that the attachment bytes were unchanged,
+  that both foreign keys and the `user_sites` association still resolved, that
+  the enum column round-tripped, and that a bcrypt hash copied across still
+  verified its original password.
+- Confirmed a new ticket inserted after the migration got an id past the copied
+  ones, proving the sequence reset works, and that a second run of the script
+  exits 1 with "Refusing to copy into a non-empty database".
+- Ran the full 34-check application suite (below) a second time against
+  PostgreSQL rather than SQLite. All 34 passed on both engines.
+- `docker compose config` validates; with `POSTGRES_PASSWORD` unset it exits 1
+  with `required variable POSTGRES_PASSWORD is missing a value: set
+  POSTGRES_PASSWORD in .env`, which is the intended failure.
+- The stack itself was not deployed, and the live SQLite data has not been
+  migrated — that is the operator's step, documented in `README.md`.
+
+---
+
+## 2026-08-11 — Added admin role assignment, user editing, and impersonation
+
+### What changed
+
+- **Creating admins.** The create-user form already carried an `is_admin`
+  checkbox; clarified what it grants, made the confirmation message say which
+  role was created, and logged the creation of an administrator account.
+- **Editing users.** Added `POST /admin/users/{id}`, so an admin can change an
+  account's username, full name, email, role, and password. A blank password box
+  means "leave it alone" — passwords are still write-only, so there is no way to
+  read the old one back. Validation is shared with creation through a new
+  `_account_error` helper rather than duplicated, and the uniqueness check
+  excludes the account being edited so saving an unchanged username is not a
+  clash with itself.
+- **A lockout guard.** An admin cannot remove administrator access from the
+  account they are signed in with. Since the acting user is always an admin, that
+  alone guarantees an installation can never be left with no administrator.
+- **Impersonation.** Added `POST /admin/users/{id}/impersonate`, which hands the
+  session to another account, and `POST /impersonate/stop`, which returns it. The
+  admin's id rides inside the signed session cookie, so the session genuinely
+  *is* the other user: `get_current_user` returns the impersonated account and
+  every existing permission check — `require_admin`, `can_access`,
+  `visible_site_ids` — answers as it would for them, with no second code path to
+  keep in sync.
+- Put the exit route outside the admin area on purpose. An admin acting as a
+  client is not an admin for that session, so a route behind `require_admin`
+  would have stranded them with no way back.
+- Made the session self-revoking: if the admin behind an impersonation is
+  demoted or deleted while it is running, the whole session is rejected rather
+  than left logged in as someone else. Nesting is collapsed too — impersonating
+  from an impersonated session keeps the original admin as the way back, so the
+  chain cannot be used to launder a session into a different admin.
+- Added a persistent banner across every page while impersonation is active,
+  fed by a Jinja context processor so it did not have to be threaded through
+  each route's context. Both the start and the end are written to the log.
+
+### Files touched
+
+`app/security.py`, `app/templating.py`, `app/routers/auth.py`,
+`app/routers/admin.py`, `app/templates/base.html`,
+`app/templates/admin/users.html`, `app/static/app.css`, `README.md`,
+`CLAUDE.md`, `AGENTS.md`.
+
+### Verification
+
+Exercised through the running app with `TestClient`, 34 checks, all passing on
+both SQLite and PostgreSQL:
+
+- Creating an admin, then signing in as that new account and reaching the admin
+  dashboard and ticket queue — confirming the role is real, not just displayed.
+- Editing a name and email; confirming a blank password left the stored hash
+  byte-identical; changing the username and password together and signing in
+  with the new credentials.
+- Rejections: invalid username, duplicate username, short password on both
+  create and edit, and self-demotion — with the acting admin's role confirmed
+  unchanged in the database afterwards.
+- Impersonating a client: redirected to the client landing page, the banner
+  shown, client navigation instead of admin navigation, only that client's
+  assigned page visible, and `/admin/users` answering 403 for the duration.
+- Ending it: session restored to the admin, banner gone, admin area reachable
+  again, and a second `/impersonate/stop` refused with 400.
+- Abuse paths: a signed-in client cannot start an impersonation (403) or forge a
+  stop (400); demoting the impersonating admin mid-session invalidates the
+  session and redirects to `/login`.
+
+One bug was found this way and fixed: the error page renders `base.html` with no
+`user` in context, so a 403 raised *during* an impersonated session crashed the
+banner with `'user' is undefined`. The banner now carries the same guard as the
+navigation above it.
+
+---
+
 ## 2026-08-11 — Moved the Docker stack from PostgreSQL to SQLite
 
 ### What changed

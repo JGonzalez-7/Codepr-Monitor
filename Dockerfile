@@ -5,8 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv
 
-# curl backs the healthcheck; sqlite3 is here for `.backup`, which snapshots the
-# database consistently while the app is still writing to it.
+# curl backs the healthcheck; sqlite3 is here to read the pre-PostgreSQL
+# database file, and can go once that migration is done. Backups of the live
+# database are taken with pg_dump from the `db` service, not from here.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl sqlite3 \
     && rm -rf /var/lib/apt/lists/*
@@ -16,10 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
-# The SQLite database lives here, on a named volume. The directory must exist in
-# the image and be owned by appuser: Docker seeds a fresh named volume from the
-# image's directory, so without this the mount arrives root-owned and the app
-# cannot create its database file.
+# Mount point for the pre-PostgreSQL SQLite volume, which the app now mounts
+# read-only so migrate_to_postgres.py can read it. The directory must exist in
+# the image and be owned by appuser, because Docker seeds a fresh named volume
+# from the image's directory. Removable with the migration.
 RUN mkdir -p /srv/data
 
 # Do not run the app as root.

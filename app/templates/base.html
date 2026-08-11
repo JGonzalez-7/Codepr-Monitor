@@ -35,6 +35,20 @@
     {% endif %}
   </header>
 
+  {# error.html renders this layout with no user in context, so the guard has to
+     match the one on the nav above. #}
+  {% if impersonator and user is defined and user %}
+    <div class="impersonating" role="status">
+      <span>
+        You are acting as <strong>{{ user.full_name }}</strong> ({{ user.username }}).
+        Anything you do here is recorded as them.
+      </span>
+      <form method="post" action="/impersonate/stop">
+        <button class="btn" type="submit">Back to {{ impersonator.username }}</button>
+      </form>
+    </div>
+  {% endif %}
+
   <main class="page">
     {% block content %}{% endblock %}
   </main>
