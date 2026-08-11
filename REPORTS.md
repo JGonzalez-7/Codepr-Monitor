@@ -4,6 +4,77 @@ A running log of the work done on this project. Newest entries first.
 
 ---
 
+## 2026-08-11 — Moved the Docker stack from PostgreSQL to SQLite
+
+### What changed
+
+- Dropped the `db` service from `docker-compose.yml`. The stack is now `app` and
+  `uptime-kuma`, with the database as one SQLite file on a new
+  `monitor-sqlite-data` volume at `/srv/data/codepr_monitor.db`.
+- Added the volume mount the app service never had. Without it the database file
+  would sit in the container filesystem and be destroyed by the next
+  `./update.sh` — the same trap that had already lost the HBPR URL change, but
+  this time it would take every account and ticket with it.
+- Created `/srv/data` in the image, owned by `appuser`. Docker seeds a fresh
+  named volume from the image's directory, so without that the mount arrives
+  root-owned and the app cannot create its database file.
+- Set SQLite pragmas on every connection in `app/db.py`: WAL, so the 60-second
+  check does not block readers; a 30-second `busy_timeout`, so a check and a
+  ticket submission queue instead of raising "database is locked";
+  `foreign_keys=ON`, which SQLite otherwise ignores and the attachment cascade
+  depends on; and `synchronous=NORMAL`, which is still crash-safe under WAL.
+  Also raised the driver-level lock timeout in `connect_args`.
+- Added `migrate_to_sqlite.py`, a one-off copy of every row from PostgreSQL into
+  a fresh SQLite file. Reseeding instead would have minted new password hashes
+  and dropped the ticket history, so the accounts in `SECRETS.md` would have
+  stopped working. It copies parents first and refuses to run against a
+  non-empty target, since it is a move rather than a sync.
+- Installed the `sqlite3` CLI in the image so the documented `.backup` command
+  actually runs. `.backup` takes a consistent snapshot while the app is writing;
+  `cp` on a live WAL database does not.
+- Kept `psycopg` in `requirements.txt` and the old `monitor-db-data` volume on
+  disk, so moving back to PostgreSQL is a `DATABASE_URL` change rather than a
+  restore.
+- Fixed a bug in `update.sh` that `--all` exposed: an empty service array was
+  round-tripped through `printf`/`readarray`, which produced one empty string
+  argument, so `docker compose build ""` failed with "no such service". The
+  array is now expanded directly with `${SERVICES[@]+"${SERVICES[@]}"}`.
+- Updated `README.md` with a **The database** section covering the file
+  location, the pragmas, the backup procedure, and the way back to PostgreSQL.
+  Corrected the stack line, the without-Docker section, and the now-wrong
+  "Production database: PostgreSQL 16" lines in `CLAUDE.md` and `AGENTS.md`.
+
+### Files touched
+
+- New: `migrate_to_sqlite.py`
+- Changed: `docker-compose.yml`, `Dockerfile`, `app/db.py`, `update.sh`,
+  `README.md`, `CLAUDE.md`, `AGENTS.md`, `.env.example`
+
+### Verification
+
+- Counted the live PostgreSQL data first: 3 sites, 4 users, 3 grants, 1 ticket,
+  1 attachment, 211 checks. Ran the migration inside the app image while the
+  `db` service was still up, and every table matched on the other side.
+- Confirmed the stack came up as two services with `journal_mode = wal` and the
+  volume owned by `appuser`.
+- Confirmed the migration preserved credentials rather than reseeding: the
+  original `SEED_USER_PASSWORD` still signs in as user1, user2, and user3, and
+  `SECRETS.md` gained no new block.
+- Re-checked access control on the migrated data: `user1 → ['hbpr']`,
+  `user2 → ['scholarship']`, `user3 → ['odoo']`; the migrated screenshot serves
+  as `image/png` to its owner and to the admin, and 404s for another client.
+- Load-tested the concurrency question directly, since it is the main reason not
+  to pick SQLite: 20 parallel ticket submissions alongside a forced check-now
+  returned 303 every time, with zero "database is locked" or `OperationalError`
+  entries in the log. The 20 test tickets were then deleted, leaving the one real
+  ticket.
+- Ran the documented backup command end to end: `.backup` inside the container,
+  `docker compose cp` out, then opened the copy and confirmed all six tables.
+- Rebuilt once more afterwards and confirmed the data survived the rebuild,
+  which is the behaviour the volume exists to provide.
+
+---
+
 ## 2026-08-11 — Added screenshot attachments and per-user page access
 
 ### What changed

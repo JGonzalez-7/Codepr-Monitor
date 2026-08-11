@@ -1,31 +1,20 @@
 services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: codepr
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codepr}
-      POSTGRES_DB: codepr_monitor
-    volumes:
-      - monitor-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U codepr -d codepr_monitor"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   app:
     build: .
-    depends_on:
-      db:
-        condition: service_healthy
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+psycopg://codepr:${POSTGRES_PASSWORD:-codepr}@db:5432/codepr_monitor
+      # SQLite, on the named volume below. Four slashes: sqlite://// means an
+      # absolute path. Nothing else in the app is database-specific, so pointing
+      # this at postgresql+psycopg://... is all it takes to move back.
+      DATABASE_URL: sqlite:////srv/data/codepr_monitor.db
       # No SECRETS.md here on purpose — nothing writes credentials into the
       # container. Set SEED_ADMIN_PASSWORD and SEED_USER_PASSWORD in .env so you
       # already know the seeded passwords when running this stack.
+    volumes:
+      # The database file lives here. Without this mount it would sit in the
+      # container filesystem and be destroyed by the next image rebuild.
+      - monitor-sqlite-data:/srv/data
     ports:
       - "8090:8000"   # CodePR-Monitor -> http://localhost:8090
     restart: unless-stopped
@@ -41,5 +30,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  monitor-db-data:
+  monitor-sqlite-data:
   uptime-kuma-data:

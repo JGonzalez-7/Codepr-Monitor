@@ -11,7 +11,7 @@ dashboard, an embedded Uptime Kuma, and ticket mirroring into Odoo.
 
 ## Stack
 
-FastAPI · Jinja2 · SQLAlchemy · PostgreSQL 16 · Uptime Kuma · Docker Compose
+FastAPI · Jinja2 · SQLAlchemy · SQLite (WAL) · Uptime Kuma · Docker Compose
 
 ## How to run this app
 
@@ -78,6 +78,32 @@ docker compose down            # stop
 docker compose down -v         # stop and erase all data, including accounts
 ```
 
+## The database
+
+One SQLite file, on the `monitor-sqlite-data` volume at
+`/srv/data/codepr_monitor.db` inside the container. There is no database
+service to run.
+
+It opens in **WAL** mode, so the 60-second check does not block the status page,
+with a 30-second busy timeout so a check and a ticket submission never collide
+into a "database is locked" error. `PRAGMA foreign_keys=ON` is set on every
+connection — SQLite ignores foreign keys otherwise, and the attachment cascade
+depends on them.
+
+**Back it up** by copying the file out. Use `.backup` rather than `cp`: it takes
+a consistent snapshot while the app is still writing.
+
+```bash
+docker compose exec app sqlite3 /srv/data/codepr_monitor.db \
+  ".backup '/srv/data/backup.db'"
+docker compose cp app:/srv/data/backup.db ./codepr_monitor-backup.db
+```
+
+Nothing in the app is engine-specific. To move back to PostgreSQL, add the
+service back to `docker-compose.yml` and point `DATABASE_URL` at it —
+`psycopg` is still in `requirements.txt`. `migrate_to_sqlite.py` shows the shape
+of the copy in the other direction.
+
 ---
 
 ### Running it without Docker
@@ -97,8 +123,9 @@ SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" \
 Then open http://localhost:8090. A local run writes `SECRETS.md` to this folder
 listing the seeded accounts.
 
-This starts the app only — Uptime Kuma and PostgreSQL are not included, so the
-`/admin/kuma` page will be empty.
+This starts the app only — Uptime Kuma is not included, so the `/admin/kuma`
+page will be empty. It is the same database engine the Docker stack uses; only
+the file location differs.
 
 ### If something goes wrong
 
@@ -154,8 +181,8 @@ most `MAX_ATTACHMENT_MB` each (default 5) to a ticket. They appear as thumbnails
 on the client's own ticket list and on the admin queue.
 
 The bytes are stored in the database, not on disk: the app container mounts no
-volume, so its filesystem does not survive a rebuild, while the Postgres volume
-does. It also means every screenshot is served by an authenticated route that
+volume for it, so its filesystem does not survive a rebuild, while the database
+volume does. It also means every screenshot is served by an authenticated route that
 checks the requester is the submitter or an admin, instead of sitting at a
 guessable static URL.
 

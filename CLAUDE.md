@@ -23,10 +23,13 @@ scholarship portal, and the Odoo instance at odoo.code.pr.
 - Framework: FastAPI.
 - Language: Python 3.12.
 - Database layer: SQLAlchemy 2.x ORM.
-- Production database: PostgreSQL 16 (Docker Compose service `db`).
-- Local database: SQLite, by setting `DATABASE_URL=sqlite:///./codepr_monitor.db`.
+- Database: SQLite in WAL mode, everywhere. In Docker it lives on the
+  `monitor-sqlite-data` volume at `/srv/data/codepr_monitor.db`; locally, set
+  `DATABASE_URL=sqlite:///./codepr_monitor.db`.
+- Nothing in the app is engine-specific, so `DATABASE_URL` alone can point it at
+  PostgreSQL again; `psycopg` is still in `requirements.txt` for that.
 - Templating: Jinja2, server-rendered. No frontend build step and no CDN assets.
-- Hosting: Docker Compose — `app`, `db`, and `uptime-kuma` services.
+- Hosting: Docker Compose — `app` and `uptime-kuma` services.
 - Monitoring companion: Uptime Kuma (`louislam/uptime-kuma:1`) on port 3001.
 - Odoo integration: JSON-RPC push into the `codepr.monitor.ticket` model provided
   by the bundled addon in `odoo-addon/codepr_monitor`.

@@ -30,10 +30,6 @@ case "${1:-}" in
     exit 2 ;;
 esac
 
-# Bash 4.3 and older choke on an empty array under `set -u`.
-expand_services() { printf '%s\n' "${SERVICES[@]+"${SERVICES[@]}"}"; }
-readarray -t SERVICE_ARGS < <(expand_services)
-
 if docker compose version >/dev/null 2>&1; then
   COMPOSE=(docker compose)
 elif command -v docker-compose >/dev/null 2>&1; then
@@ -51,10 +47,10 @@ if [[ ! -f .env ]]; then
 fi
 
 echo "-> Rebuilding image from $(pwd)"
-"${COMPOSE[@]}" build ${SERVICE_ARGS[@]+"${SERVICE_ARGS[@]}"}
+"${COMPOSE[@]}" build ${SERVICES[@]+"${SERVICES[@]}"}
 
 echo "-> Recreating container"
-"${COMPOSE[@]}" up -d ${SERVICE_ARGS[@]+"${SERVICE_ARGS[@]}"}
+"${COMPOSE[@]}" up -d ${SERVICES[@]+"${SERVICES[@]}"}
 
 # Ask compose where the app actually landed rather than assuming 8090, so a
 # changed port mapping does not turn into a false "unhealthy" report.
