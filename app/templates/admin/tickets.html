@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Tickets · CodePR-Monitor{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Ticket queue</h1>
+  <p>Every ticket submitted by a client, newest first.</p>
+</div>
+
+<div class="filters">
+  <a href="/admin/tickets" class="{{ 'is-active' if active_filter == 'all' }}">All</a>
+  {% for status in statuses %}
+    <a href="/admin/tickets?status={{ status.value }}"
+       class="{{ 'is-active' if active_filter == status.value }}">{{ status | ticket_status_label }}</a>
+  {% endfor %}
+</div>
+
+<div class="table-wrap">
+  {% if tickets %}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Page</th>
+          <th>Subject</th>
+          <th>Submitted by</th>
+          <th>Submitted</th>
+          <th>Type</th>
+          <th>Status</th>
+          {% if odoo_enabled %}<th>Odoo</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for ticket in tickets %}
+          <tr>
+            <td class="muted">{{ ticket.id }}</td>
+            <td class="nowrap">
+              {{ ticket.site.name }}
+              <div class="muted">{{ ticket.site.url }}</div>
+            </td>
+            <td>
+              {{ ticket.subject }}
+              {% if ticket.body %}<div class="muted">{{ ticket.body }}</div>{% endif %}
+            </td>
+            <td class="nowrap">{{ ticket.user.full_name }}<div class="muted">{{ ticket.user.username }}</div></td>
+            <td class="nowrap">{{ ticket.submitted_at | format_dt }}</td>
+            <td><span class="tag {{ ticket.kind.value }}">{{ 'Issue' if ticket.kind.value == 'issue' else 'Fix' }}</span></td>
+            <td>
+              <form class="inline-form" method="post" action="/admin/tickets/{{ ticket.id }}/status">
+                <select name="status" aria-label="Status for ticket {{ ticket.id }}">
+                  {% for status in statuses %}
+                    <option value="{{ status.value }}" {{ 'selected' if ticket.status == status }}>
+                      {{ status | ticket_status_label }}
+                    </option>
+                  {% endfor %}
+                </select>
+                <button class="btn btn-ghost btn-small" type="submit">Save</button>
+              </form>
+            </td>
+            {% if odoo_enabled %}
+              <td class="nowrap">
+                {% if ticket.odoo_id %}
+                  <span class="tag resolved">#{{ ticket.odoo_id }}</span>
+                {% else %}
+                  <form class="inline-form" method="post" action="/admin/tickets/{{ ticket.id }}/resync">
+                    <button class="btn btn-ghost btn-small" type="submit">Retry</button>
+                  </form>
+                  {% if ticket.odoo_error %}<div class="muted">{{ ticket.odoo_error }}</div>{% endif %}
+                {% endif %}
+              </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">No tickets match this filter.</p>
+  {% endif %}
+</div>
+{% endblock %}

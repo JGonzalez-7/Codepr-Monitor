@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Uptime Kuma · CodePR-Monitor{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Uptime Kuma</h1>
+  <p>Deeper history, alerting, and per-monitor detail, embedded from the companion container.</p>
+</div>
+
+<div class="alert info">
+  Uptime Kuma keeps its own accounts. On first run, open it directly to create the
+  admin user and add monitors. If the frame stays blank, Kuma is refusing to be
+  embedded — point <code>UPTIME_KUMA_EMBED_URL</code> at a published status page
+  (for example <code>{{ kuma_url }}/status/codepr</code>), which is the surface
+  designed for embedding.
+  <div style="margin-top:.75rem">
+    <a class="btn btn-ghost btn-small" href="{{ kuma_url }}" target="_blank" rel="noopener noreferrer">Open Uptime Kuma in a new tab</a>
+  </div>
+</div>
+
+<iframe class="embed-frame" src="{{ kuma_url }}" title="Uptime Kuma dashboard"
+        loading="lazy" referrerpolicy="no-referrer"></iframe>
+{% endblock %}

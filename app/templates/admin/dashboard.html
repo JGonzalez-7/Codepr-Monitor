@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · CodePR-Monitor{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Monitoring dashboard</h1>
+  <p>Every monitored page, checked every {{ check_interval }} seconds.</p>
+</div>
+
+<div class="stat-row">
+  <div class="stat"><div class="stat-value">{{ summary.total }}</div><div class="stat-label">Pages</div></div>
+  <div class="stat up"><div class="stat-value">{{ summary.up }}</div><div class="stat-label">Online</div></div>
+  <div class="stat degraded"><div class="stat-value">{{ summary.degraded }}</div><div class="stat-label">Need attention</div></div>
+  <div class="stat down"><div class="stat-value">{{ summary.down }}</div><div class="stat-label">Offline</div></div>
+  <div class="stat"><div class="stat-value">{{ open_tickets }}</div><div class="stat-label">Open tickets</div></div>
+</div>
+
+{% if not cf_token_configured %}
+  <div class="alert info">
+    <strong>Cloudflare Access token not configured.</strong>
+    odoo.code.pr sits behind Cloudflare Zero Trust, so checks only reach the Access
+    login page and cannot confirm Odoo itself is healthy. Set
+    <code>CF_ACCESS_CLIENT_ID</code> and <code>CF_ACCESS_CLIENT_SECRET</code> in
+    <code>.env</code>, and authorize that service token on the odoo.code.pr application.
+  </div>
+{% endif %}
+
+{% if not odoo_enabled %}
+  <div class="alert info">
+    <strong>Odoo mirroring is off.</strong>
+    Tickets are stored locally only. Set <code>ODOO_ENABLED=true</code> plus the
+    <code>ODOO_*</code> credentials to mirror them into the
+    <code>codepr.monitor.ticket</code> model.
+  </div>
+{% endif %}
+
+<form method="post" action="/admin/check-now" style="margin-bottom:1.25rem">
+  <button class="btn" type="submit">Run all checks now</button>
+</form>
+
+<div class="card-grid">
+  {% for card in cards %}
+    {% include "_site_card.html" %}
+  {% else %}
+    <div class="table-wrap"><p class="empty">No pages configured. Add one under <a href="/admin/sites">Pages</a>.</p></div>
+  {% endfor %}
+</div>
+
+<div class="section">
+  <h2>Latest tickets</h2>
+  <div class="table-wrap">
+    {% if recent_tickets %}
+      <table>
+        <thead>
+          <tr><th>#</th><th>Page</th><th>Subject</th><th>Submitted by</th><th>Submitted</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for ticket in recent_tickets %}
+            <tr>
+              <td class="muted">{{ ticket.id }}</td>
+              <td class="nowrap">{{ ticket.site.name }}</td>
+              <td>{{ ticket.subject }}</td>
+              <td class="nowrap">{{ ticket.user.full_name }}</td>
+              <td class="nowrap">{{ ticket.submitted_at | format_dt }}</td>
+              <td><span class="tag {{ ticket.status.value }}">{{ ticket.status | ticket_status_label }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty">No tickets submitted yet.</p>
+    {% endif %}
+  </div>
+  <p style="margin-top:1rem"><a href="/admin/tickets">View the full ticket queue →</a></p>
+</div>
+{% endblock %}

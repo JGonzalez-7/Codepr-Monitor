@@ -1,0 +1,42 @@
+{# Shared status card. `card` is a presenters.SiteCard. #}
+<article class="site-card {{ 'is-inactive' if not card.site.is_active }}" data-slug="{{ card.site.slug }}">
+  <div class="site-card-head">
+    <div>
+      <h3>{{ card.site.name }}</h3>
+      <a class="site-url" href="{{ card.site.url }}" target="_blank" rel="noopener noreferrer">{{ card.site.url }}</a>
+    </div>
+    <span class="pill {{ card.status_value }}" data-role="pill">
+      <span class="dot" aria-hidden="true"></span>
+      <span data-role="label">{{ card.status | status_label }}</span>
+    </span>
+  </div>
+
+  <p class="site-blurb" data-role="blurb">{{ card.status | status_blurb }}</p>
+
+  {% if card.detail %}
+    <p class="site-detail" data-role="detail">{{ card.detail }}</p>
+  {% endif %}
+
+  {% if card.history %}
+    <div class="spark" role="img" aria-label="Recent check history, oldest to newest">
+      {% for check in card.history %}
+        <span class="{{ check.status.value }}" title="{{ check.checked_at | format_dt }} — {{ check.detail }}"></span>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="metrics">
+    <div>
+      <span class="metric-label">Uptime 24h</span>
+      <span class="metric-value">{{ card.uptime_24h ~ '%' if card.uptime_24h is not none else '—' }}</span>
+    </div>
+    <div>
+      <span class="metric-label">Response</span>
+      <span class="metric-value">{{ card.response_ms | round | int ~ ' ms' if card.response_ms is not none else '—' }}</span>
+    </div>
+    <div>
+      <span class="metric-label">Last checked</span>
+      <span class="metric-value">{{ card.checked_at | time_ago }}</span>
+    </div>
+  </div>
+</article>

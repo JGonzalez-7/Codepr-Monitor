@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · CodePR-Monitor</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='%231a7f5a'/></svg>">
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-card">
+      <h1>CodePR-Monitor</h1>
+      <p class="sub">Sign in to see whether your pages are online.</p>
+
+      {% if error %}
+        <div class="alert error" role="alert">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" action="/login">
+        <div class="field">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" autocomplete="username"
+                 autocapitalize="none" spellcheck="false" required autofocus>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password"
+                 autocomplete="current-password" required>
+        </div>
+
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

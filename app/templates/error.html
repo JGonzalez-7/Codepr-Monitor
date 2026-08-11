@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ status_code }} · CodePR-Monitor{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ status_code }}</h1>
+  <p>{{ detail or "Something went wrong." }}</p>
+</div>
+<a class="btn" href="/">Back to safety</a>
+{% endblock %}

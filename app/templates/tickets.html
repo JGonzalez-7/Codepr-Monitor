@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}My tickets · CodePR-Monitor{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Tickets</h1>
+  <p>Report a problem with a page, or request a fix or change.</p>
+</div>
+
+{% if submitted_id %}
+  <div class="alert success" role="status">
+    Ticket #{{ submitted_id }} was submitted. We recorded the date, time, your name, and the page it is for.
+  </div>
+{% endif %}
+
+{% if error %}
+  <div class="alert error" role="alert">{{ error }}</div>
+{% endif %}
+
+<div class="form-card">
+  <form method="post" action="/tickets">
+    <div class="field">
+      <label for="site_id">Which page is this about?</label>
+      <select id="site_id" name="site_id" required>
+        <option value="" disabled selected>Choose a page…</option>
+        {% for site in sites %}
+          <option value="{{ site.id }}">{{ site.name }} — {{ site.url }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field">
+      <label>What kind of ticket is this?</label>
+      <div class="radio-row">
+        <label><input type="radio" name="kind" value="issue" checked> Something is broken</label>
+        <label><input type="radio" name="kind" value="fix"> I want a fix or change</label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="subject">Subject</label>
+      <input type="text" id="subject" name="subject" maxlength="200" required
+             placeholder="Short summary, e.g. Contact form does not send">
+    </div>
+
+    <div class="field">
+      <label for="body">Details</label>
+      <textarea id="body" name="body"
+                placeholder="What did you expect, and what happened instead? Steps to reproduce help a lot."></textarea>
+      <p class="hint">Your name and the submission date and time are attached automatically.</p>
+    </div>
+
+    <button class="btn" type="submit">Submit ticket</button>
+  </form>
+</div>
+
+<div class="section">
+  <h2>Your tickets</h2>
+  <div class="table-wrap">
+    {% if tickets %}
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Page</th>
+            <th>Subject</th>
+            <th>Type</th>
+            <th>Submitted</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ticket in tickets %}
+            <tr>
+              <td class="muted">{{ ticket.id }}</td>
+              <td class="nowrap">{{ ticket.site.name }}</td>
+              <td>
+                {{ ticket.subject }}
+                {% if ticket.body %}<div class="muted">{{ ticket.body[:140] }}{{ '…' if ticket.body|length > 140 }}</div>{% endif %}
+              </td>
+              <td><span class="tag {{ ticket.kind.value }}">{{ 'Issue' if ticket.kind.value == 'issue' else 'Fix' }}</span></td>
+              <td class="nowrap">{{ ticket.submitted_at | format_dt }}</td>
+              <td><span class="tag {{ ticket.status.value }}">{{ ticket.status | ticket_status_label }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty">You have not submitted any tickets yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

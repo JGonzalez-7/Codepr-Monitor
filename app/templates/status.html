@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Page status · CodePR-Monitor{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Your pages</h1>
+  <p>We check each page automatically and refresh this view on its own.</p>
+</div>
+
+{% set trouble = summary.down > 0 %}
+{% set warning = summary.degraded > 0 %}
+
+<div class="banner {{ 'trouble' if trouble else ('warn' if warning else 'all-good') }}" data-role="banner" role="status">
+  <div>
+    {% if trouble %}
+      <strong data-role="banner-title">{{ summary.down }} page{{ 's' if summary.down != 1 }} offline</strong>
+      <div class="banner-sub" data-role="banner-sub">Our team can see this too. You can submit a ticket with any details.</div>
+    {% elif warning %}
+      <strong data-role="banner-title">{{ summary.degraded }} page{{ 's' if summary.degraded != 1 }} need attention</strong>
+      <div class="banner-sub" data-role="banner-sub">We reached the server but could not confirm the page is healthy.</div>
+    {% else %}
+      <strong data-role="banner-title">All pages are online</strong>
+      <div class="banner-sub" data-role="banner-sub">Everything we monitor is loading normally.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if cards %}
+  <div class="card-grid">
+    {% for card in cards %}
+      {% include "_site_card.html" %}
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="table-wrap"><p class="empty">No pages are being monitored yet.</p></div>
+{% endif %}
+
+<div class="section">
+  <h2>Something looks wrong?</h2>
+  <p class="muted">Tell us what you are seeing and we will pick it up.</p>
+  <a class="btn" href="/tickets">Submit a ticket</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Poll for fresh results so the page reflects the checker without a reload.
+  const LABELS = { up: 'Online', degraded: 'Needs attention', down: 'Offline', pending: 'Checking…' };
+
+  async function refresh() {
+    let data;
+    try {
+      const response = await fetch('/api/status', { headers: { 'Accept': 'application/json' } });
+      if (!response.ok) return;          // session expired or server hiccup — try again next tick
+      data = await response.json();
+    } catch { return; }                  // offline browser; keep the last known state on screen
+
+    for (const site of data.sites) {
+      const card = document.querySelector(`[data-slug="${CSS.escape(site.slug)}"]`);
+      if (!card) continue;
+
+      const pill = card.querySelector('[data-role="pill"]');
+      pill.className = `pill ${site.status}`;
+      pill.querySelector('[data-role="label"]').textContent = LABELS[site.status] || site.label;
+
+      card.querySelector('[data-role="blurb"]').textContent = site.blurb;
+      const detail = card.querySelector('[data-role="detail"]');
+      if (detail) detail.textContent = site.detail;
+    }
+
+    const banner = document.querySelector('[data-role="banner"]');
+    const { down, degraded } = data.summary;
+    if (down > 0) {
+      banner.className = 'banner trouble';
+      banner.querySelector('[data-role="banner-title"]').textContent =
+        `${down} page${down === 1 ? '' : 's'} offline`;
+      banner.querySelector('[data-role="banner-sub"]').textContent =
+        'Our team can see this too. You can submit a ticket with any details.';
+    } else if (degraded > 0) {
+      banner.className = 'banner warn';
+      banner.querySelector('[data-role="banner-title"]').textContent =
+        `${degraded} page${degraded === 1 ? '' : 's'} need attention`;
+      banner.querySelector('[data-role="banner-sub"]').textContent =
+        'We reached the server but could not confirm the page is healthy.';
+    } else {
+      banner.className = 'banner all-good';
+      banner.querySelector('[data-role="banner-title"]').textContent = 'All pages are online';
+      banner.querySelector('[data-role="banner-sub"]').textContent =
+        'Everything we monitor is loading normally.';
+    }
+  }
+
+  setInterval(refresh, 30000);
+</script>
+{% endblock %}

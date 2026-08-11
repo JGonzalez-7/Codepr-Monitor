@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_codepr_monitor_ticket_user,codepr.monitor.ticket.user,model_codepr_monitor_ticket,base.group_user,1,1,1,0
+access_codepr_monitor_ticket_manager,codepr.monitor.ticket.manager,model_codepr_monitor_ticket,base.group_system,1,1,1,1

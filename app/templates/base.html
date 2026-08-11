@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CodePR-Monitor{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='%231a7f5a'/></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">
+      <span class="brand-dot" aria-hidden="true"></span>
+      CodePR<span class="brand-thin">-Monitor</span>
+    </a>
+
+    {% if user is defined and user %}
+      <nav class="nav" aria-label="Main">
+        {% if user.is_admin %}
+          <a href="/admin" class="{{ 'is-active' if request.url.path == '/admin' }}">Dashboard</a>
+          <a href="/admin/tickets" class="{{ 'is-active' if request.url.path.startswith('/admin/tickets') }}">Tickets</a>
+          <a href="/admin/sites" class="{{ 'is-active' if request.url.path.startswith('/admin/sites') }}">Pages</a>
+          <a href="/admin/kuma" class="{{ 'is-active' if request.url.path.startswith('/admin/kuma') }}">Uptime Kuma</a>
+        {% else %}
+          <a href="/status" class="{{ 'is-active' if request.url.path == '/status' }}">Page status</a>
+          <a href="/tickets" class="{{ 'is-active' if request.url.path.startswith('/tickets') }}">My tickets</a>
+        {% endif %}
+      </nav>
+
+      <form class="session" method="post" action="/logout">
+        <span class="who">{{ user.full_name }}</span>
+        <button class="btn btn-ghost" type="submit">Sign out</button>
+      </form>
+    {% endif %}
+  </header>
+
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    CodePR-Monitor · times shown in UTC
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

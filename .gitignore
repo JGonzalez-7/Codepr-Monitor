@@ -1,0 +1,20 @@
+# Credentials — never commit
+SECRETS.md
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Local data
+*.db
+*.sqlite3
+data/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

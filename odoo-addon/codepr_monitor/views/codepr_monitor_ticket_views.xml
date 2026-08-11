@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_codepr_monitor_ticket_list" model="ir.ui.view">
+        <field name="name">codepr.monitor.ticket.list</field>
+        <field name="model">codepr.monitor.ticket</field>
+        <field name="arch" type="xml">
+            <list string="Monitor Tickets" decoration-warning="state == 'open'" decoration-muted="state == 'resolved'">
+                <field name="submitted_at"/>
+                <field name="site_name"/>
+                <field name="name"/>
+                <field name="submitted_by"/>
+                <field name="kind"/>
+                <field name="state" widget="badge"
+                       decoration-warning="state == 'open'"
+                       decoration-info="state == 'in_progress'"
+                       decoration-success="state == 'resolved'"/>
+                <field name="monitor_ref" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_codepr_monitor_ticket_form" model="ir.ui.view">
+        <field name="name">codepr.monitor.ticket.form</field>
+        <field name="model">codepr.monitor.ticket</field>
+        <field name="arch" type="xml">
+            <form string="Monitor Ticket">
+                <header>
+                    <field name="state" widget="statusbar" options="{'clickable': 1}"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="Subject"/></h1>
+                    </div>
+                    <group>
+                        <group string="Page">
+                            <field name="site_name"/>
+                            <field name="site_url" widget="url"/>
+                        </group>
+                        <group string="Submission">
+                            <field name="submitted_by"/>
+                            <field name="submitted_at"/>
+                            <field name="kind"/>
+                            <field name="monitor_ref" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Details">
+                        <field name="description" nolabel="1" placeholder="What the client reported…"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_codepr_monitor_ticket_search" model="ir.ui.view">
+        <field name="name">codepr.monitor.ticket.search</field>
+        <field name="model">codepr.monitor.ticket</field>
+        <field name="arch" type="xml">
+            <search string="Search Monitor Tickets">
+                <field name="name"/>
+                <field name="site_name"/>
+                <field name="submitted_by"/>
+                <filter name="filter_open" string="Open" domain="[('state', '=', 'open')]"/>
+                <filter name="filter_in_progress" string="In progress" domain="[('state', '=', 'in_progress')]"/>
+                <filter name="filter_resolved" string="Resolved" domain="[('state', '=', 'resolved')]"/>
+                <separator/>
+                <filter name="filter_issue" string="Issues" domain="[('kind', '=', 'issue')]"/>
+                <filter name="filter_fix" string="Fix requests" domain="[('kind', '=', 'fix')]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_site" string="Page" context="{'group_by': 'site_name'}"/>
+                    <filter name="group_state" string="Status" context="{'group_by': 'state'}"/>
+                    <filter name="group_kind" string="Type" context="{'group_by': 'kind'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_codepr_monitor_ticket" model="ir.actions.act_window">
+        <field name="name">Monitor Tickets</field>
+        <field name="res_model">codepr.monitor.ticket</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_codepr_monitor_ticket_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No tickets yet</p>
+            <p>Tickets submitted through CodePR-Monitor will appear here.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_codepr_monitor_root"
+              name="CodePR Monitor"
+              sequence="90"/>
+
+    <menuitem id="menu_codepr_monitor_tickets"
+              name="Tickets"
+              parent="menu_codepr_monitor_root"
+              action="action_codepr_monitor_ticket"
+              sequence="10"/>
+
+</odoo>
