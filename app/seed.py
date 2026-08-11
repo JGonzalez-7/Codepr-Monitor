@@ -47,11 +47,34 @@ SEED_SITES = [
     },
 ]
 
+# Each client starts with one page. "sites" is ignored for the admin, who is
+# unrestricted by rule rather than by assignment. Grants apply when the account
+# is created; an existing account keeps whatever an admin set under Users.
 SEED_USERS = [
-    {"username": "admin", "full_name": "CodePR Administrator", "is_admin": True},
-    {"username": "user1", "full_name": "Client User One", "is_admin": False},
-    {"username": "user2", "full_name": "Client User Two", "is_admin": False},
-    {"username": "user3", "full_name": "Client User Three", "is_admin": False},
+    {
+        "username": "admin",
+        "full_name": "CodePR Administrator",
+        "is_admin": True,
+        "sites": [],
+    },
+    {
+        "username": "user1",
+        "full_name": "Client User One",
+        "is_admin": False,
+        "sites": ["hbpr"],
+    },
+    {
+        "username": "user2",
+        "full_name": "Client User Two",
+        "is_admin": False,
+        "sites": ["scholarship"],
+    },
+    {
+        "username": "user3",
+        "full_name": "Client User Three",
+        "is_admin": False,
+        "sites": ["odoo"],
+    },
 ]
 
 
@@ -87,6 +110,12 @@ def seed_users(db: Session) -> list[tuple[str, str, bool]]:
         )
         password = configured or _generate_password()
 
+        granted = (
+            db.scalars(select(Site).where(Site.slug.in_(spec["sites"]))).all()
+            if spec["sites"]
+            else []
+        )
+
         db.add(
             User(
                 username=spec["username"],
@@ -94,6 +123,7 @@ def seed_users(db: Session) -> list[tuple[str, str, bool]]:
                 email=f"{spec['username']}@codepr.local",
                 password_hash=hash_password(password),
                 is_admin=spec["is_admin"],
+                sites=list(granted),
             )
         )
         created.append((spec["username"], password, spec["is_admin"]))

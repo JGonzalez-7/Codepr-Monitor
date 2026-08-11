@@ -29,11 +29,21 @@ class SiteCard:
 
 
 def build_site_cards(
-    db: Session, *, include_inactive: bool = False, history_limit: int = 30
+    db: Session,
+    *,
+    include_inactive: bool = False,
+    history_limit: int = 30,
+    only_site_ids: set[int] | None = None,
 ) -> list[SiteCard]:
+    """Build the status cards. `only_site_ids` of None means no restriction;
+    an empty set means no pages, which is what an unassigned client sees."""
     query = select(Site).order_by(Site.name)
     if not include_inactive:
         query = query.where(Site.is_active.is_(True))
+    if only_site_ids is not None:
+        if not only_site_ids:
+            return []
+        query = query.where(Site.id.in_(only_site_ids))
 
     cards: list[SiteCard] = []
     for site in db.scalars(query).all():

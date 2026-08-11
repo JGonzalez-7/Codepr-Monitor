@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Page status · CodePR-Monitor{% endblock %}
+{% block title %}Page Status · CodePR-Monitor{% endblock %}
 
 {% block content %}
 <div class="page-head">
@@ -10,6 +10,7 @@
 {% set trouble = summary.down > 0 %}
 {% set warning = summary.degraded > 0 %}
 
+{% if cards %}
 <div class="banner {{ 'trouble' if trouble else ('warn' if warning else 'all-good') }}" data-role="banner" role="status">
   <div>
     {% if trouble %}
@@ -24,6 +25,7 @@
     {% endif %}
   </div>
 </div>
+{% endif %}
 
 {% if cards %}
   <div class="card-grid">
@@ -31,15 +33,24 @@
       {% include "_site_card.html" %}
     {% endfor %}
   </div>
-{% else %}
+{% elif user.is_admin %}
   <div class="table-wrap"><p class="empty">No pages are being monitored yet.</p></div>
+{% else %}
+  <div class="table-wrap">
+    <p class="empty">
+      No pages have been assigned to your account yet. Ask CodePR to give you
+      access to the pages you are responsible for.
+    </p>
+  </div>
 {% endif %}
 
-<div class="section">
-  <h2>Something looks wrong?</h2>
-  <p class="muted">Tell us what you are seeing and we will pick it up.</p>
-  <a class="btn" href="/tickets">Submit a ticket</a>
-</div>
+{% if cards %}
+  <div class="section">
+    <h2>Something looks wrong?</h2>
+    <p class="muted">Tell us what you are seeing and we will pick it up.</p>
+    <a class="btn" href="/tickets">Submit a ticket</a>
+  </div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

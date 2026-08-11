@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     cf_access_client_id: str = ""
     cf_access_client_secret: str = ""
 
+    # Ticket screenshots. Stored in the database, so these caps also bound how
+    # fast the Postgres volume grows.
+    max_attachment_mb: float = 5.0
+    max_attachments_per_ticket: int = 3
+
     # Uptime Kuma
     uptime_kuma_embed_url: str = "http://localhost:3001"
 
@@ -46,6 +51,10 @@ class Settings(BaseSettings):
     @property
     def has_cf_access_token(self) -> bool:
         return bool(self.cf_access_client_id and self.cf_access_client_secret)
+
+    @property
+    def max_attachment_bytes(self) -> int:
+        return int(self.max_attachment_mb * 1024 * 1024)
 
 
 @lru_cache

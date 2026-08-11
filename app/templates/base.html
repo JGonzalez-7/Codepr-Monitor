@@ -11,7 +11,7 @@
   <header class="topbar">
     <a class="brand" href="/">
       <span class="brand-dot" aria-hidden="true"></span>
-      CodePR<span class="brand-thin">-Monitor</span>
+      CodePR-Monitor
     </a>
 
     {% if user is defined and user %}
@@ -20,10 +20,11 @@
           <a href="/admin" class="{{ 'is-active' if request.url.path == '/admin' }}">Dashboard</a>
           <a href="/admin/tickets" class="{{ 'is-active' if request.url.path.startswith('/admin/tickets') }}">Tickets</a>
           <a href="/admin/sites" class="{{ 'is-active' if request.url.path.startswith('/admin/sites') }}">Pages</a>
+          <a href="/admin/users" class="{{ 'is-active' if request.url.path.startswith('/admin/users') }}">Users</a>
           <a href="/admin/kuma" class="{{ 'is-active' if request.url.path.startswith('/admin/kuma') }}">Uptime Kuma</a>
         {% else %}
-          <a href="/status" class="{{ 'is-active' if request.url.path == '/status' }}">Page status</a>
-          <a href="/tickets" class="{{ 'is-active' if request.url.path.startswith('/tickets') }}">My tickets</a>
+          <a href="/status" class="{{ 'is-active' if request.url.path == '/status' }}">Page Status</a>
+          <a href="/tickets" class="{{ 'is-active' if request.url.path.startswith('/tickets') }}">My Tickets</a>
         {% endif %}
       </nav>
 

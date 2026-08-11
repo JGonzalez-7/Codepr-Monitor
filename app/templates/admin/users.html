@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Users · CodePR-Monitor{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Users</h1>
+  <p>Create an account and choose which pages it can see and raise tickets about.</p>
+</div>
+
+{% if notice %}
+  <div class="alert success" role="status">{{ notice }}</div>
+{% endif %}
+{% if error %}
+  <div class="alert error" role="alert">{{ error }}</div>
+{% endif %}
+
+<div class="section" style="margin-top:0">
+  <h2>Add a user</h2>
+  <div class="form-card">
+    <form method="post" action="/admin/users">
+      <div class="editor-grid">
+        <div class="field">
+          <label for="new-username">Username</label>
+          <input type="text" id="new-username" name="username" required
+                 placeholder="client4" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="new-full-name">Full name</label>
+          <input type="text" id="new-full-name" name="full_name" required
+                 placeholder="Client User Four">
+        </div>
+      </div>
+
+      <div class="editor-grid">
+        <div class="field">
+          <label for="new-email">Email</label>
+          <input type="text" id="new-email" name="email" placeholder="person@example.com">
+        </div>
+        <div class="field">
+          <label for="new-password">Password</label>
+          <input type="password" id="new-password" name="password" required
+                 minlength="{{ min_password_length }}" autocomplete="new-password">
+          <p class="hint">
+            At least {{ min_password_length }} characters. It is hashed on save and never
+            shown again, so pass it on before you leave this page.
+          </p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Pages this user can see</label>
+        <div class="check-row">
+          {% for site in sites %}
+            <label><input type="checkbox" name="site_ids" value="{{ site.id }}"> {{ site.name }}</label>
+          {% else %}
+            <span class="muted">No pages configured yet.</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="check-row">
+        <label><input type="checkbox" name="is_admin" value="true"> Administrator (sees every page)</label>
+      </div>
+
+      <button class="btn" type="submit">Create user</button>
+    </form>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Existing users</h2>
+  {% for account in users %}
+    <div class="site-editor">
+      <form method="post" action="/admin/users/{{ account.id }}/access">
+        <div class="user-head">
+          <div>
+            <strong>{{ account.full_name }}</strong>
+            <div class="muted">{{ account.username }}{% if account.email %} · {{ account.email }}{% endif %}</div>
+          </div>
+          {% if account.is_admin %}
+            <span class="tag resolved">Administrator</span>
+          {% endif %}
+        </div>
+
+        {% if account.is_admin %}
+          <p class="hint">Administrators see every page, so there is nothing to assign.</p>
+        {% else %}
+          <div class="field">
+            <label>Pages this user can see</label>
+            <div class="check-row">
+              {% for site in sites %}
+                <label>
+                  <input type="checkbox" name="site_ids" value="{{ site.id }}"
+                         {{ 'checked' if site in account.sites }}>
+                  {{ site.name }}
+                </label>
+              {% else %}
+                <span class="muted">No pages configured yet.</span>
+              {% endfor %}
+            </div>
+            {% if not account.sites %}
+              <p class="hint">No pages assigned — this user currently sees nothing.</p>
+            {% endif %}
+          </div>
+          <button class="btn btn-ghost" type="submit">Save access</button>
+        {% endif %}
+      </form>
+    </div>
+  {% else %}
+    <div class="table-wrap"><p class="empty">No accounts yet.</p></div>
+  {% endfor %}
+</div>
+{% endblock %}

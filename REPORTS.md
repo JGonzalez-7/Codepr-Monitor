@@ -4,7 +4,125 @@ A running log of the work done on this project. Newest entries first.
 
 ---
 
-## 2026-08-11 — Added update.sh, a one-command image rebuild
+## 2026-08-11 — Added screenshot attachments and per-user page access
+
+### What changed
+
+**Screenshots on tickets**
+
+- Added a `TicketAttachment` model and a `screenshots` file input on the ticket
+  form, with thumbnails on both the client's ticket list and the admin queue.
+  Caps live in `.env`: `MAX_ATTACHMENTS_PER_TICKET` (3) and `MAX_ATTACHMENT_MB` (5).
+- Stored the bytes in the database rather than on disk. The app container mounts
+  no volume, so its filesystem does not survive a rebuild, while the Postgres
+  volume does — the same trap that had already lost the HBPR URL change.
+- Added `app/attachments.py`, which identifies the format from the file's
+  leading bytes instead of trusting the browser's declared type, and rejects
+  anything that is not PNG, JPEG, GIF, or WebP. SVG is excluded deliberately: it
+  can carry script, so serving one back to an admin would be stored XSS.
+  Filenames are reduced to a bare basename and are never used to touch disk.
+- Served screenshots from an authenticated route, not from `/static`. A request
+  succeeds only for the ticket's submitter or an admin, and anyone else gets a
+  404 rather than a 403 so ids cannot be probed. Responses carry `nosniff` and
+  a `default-src 'none'` CSP.
+
+**Per-user page access**
+
+- Added a `user_sites` association table. A client now sees only their assigned
+  pages on the status view, in the `/api/status` poll behind it, and in the
+  ticket form. `app/access.py` holds the rule in one place: admins are
+  unrestricted, and a client with no assignment sees nothing, which is the safe
+  direction to fail.
+- Re-checked the rule when a ticket is submitted. The dropdown only offers
+  permitted pages, but the id arrives in the request body, so the filtered
+  dropdown is not treated as the boundary. A cross-page attempt answers 403.
+- Added **Users** (`/admin/users`): admins create accounts, tick the pages each
+  should hold, and change an existing account's pages. Passwords are hashed on
+  save, never echoed back, and must be at least 10 characters.
+- Seeded `user1` → HBPR, `user2` → Holberton Scholarship, `user3` → Odoo. Grants
+  apply at account creation only; assignments are never rewritten on restart, so
+  an admin's changes survive a rebuild.
+- Gave the status page and ticket form real empty states, so an unassigned
+  client is told to ask for access instead of seeing a bare page. The status
+  banner no longer claims "All pages are online" when there are no pages.
+
+**Also**
+
+- Capitalised the nav and heading labels: **Page Status**, **My Tickets**,
+  **Your Tickets**.
+
+### Files touched
+
+- New: `app/attachments.py`, `app/access.py`, `app/templates/admin/users.html`
+- Changed: `app/models.py`, `app/config.py`, `app/seed.py`, `app/presenters.py`,
+  `app/routers/client.py`, `app/routers/admin.py`, `app/routers/api.py`,
+  `app/templates/base.html`, `app/templates/tickets.html`,
+  `app/templates/status.html`, `app/templates/admin/tickets.html`,
+  `app/static/app.css`, `README.md`
+
+### Verification
+
+- Wrote a 38-check end-to-end script against a throwaway SQLite database, all
+  passing: seeded grants; a client seeing only their own page in `/api/status`
+  and in the ticket form; a cross-page submission refused with 403; screenshots
+  stored with the sniffed type and intact bytes; owner 200 / other client 404 /
+  admin 200 on the attachment route; and rejection of a non-image, an oversized
+  file, and more files than the cap. On the admin side: user creation with
+  grants, a hashed password, access replaced and cleared, duplicate username and
+  short password refused, and a non-admin blocked from both `/admin/users`
+  routes with 403.
+- Two failures found and fixed along the way, both in the no-screenshot path,
+  which is the most common submission of all:
+  - Widening the parameter to `list[UploadFile | str]` made pydantic resolve the
+    union by coercing every real upload to a string, silently discarding all
+    attachments. Reverted.
+  - `isinstance(up, UploadFile)` is False for every real upload, because FastAPI
+    passes Starlette's `UploadFile` rather than the FastAPI subclass this module
+    imports. Replaced with a `getattr` on the filename.
+  - A hand-built, browser-shaped request (an empty file part that still carries
+    `filename=""`) confirmed the untouched-input case submits normally.
+- Deployed with `./update.sh`. `create_all` added `user_sites` and
+  `ticket_attachments` to the existing Postgres volume with no manual migration.
+- Applied the three grants to the running database through the admin form, since
+  seeding does not touch existing accounts. Confirmed live in Docker:
+  `user1 → ['hbpr']`, `user2 → ['scholarship']`, `user3 → ['odoo']`, admin → all
+  three; user1's ticket form offering only HBPR; a ticket against Odoo refused
+  with 403; a non-admin getting 403 on `/admin/users`; a real PNG upload stored
+  and served to its owner and to the admin but 404 to another client; and a
+  `.png` containing SVG markup rejected with 400.
+
+---
+
+## 2026-08-11 — Closed the gap in the wordmark and made it white
+
+### What changed
+
+- Removed the `<span class="brand-thin">` wrapper in `app/templates/base.html`,
+  so the header reads as the single text node `CodePR-Monitor`. The visible gap
+  was not a margin or a space in the source: `.brand` is `display: inline-flex`
+  with `gap: .55rem`, and a flex container wraps each contiguous run of text in
+  its own anonymous item, so `CodePR` and the span were two items with the gap
+  applied between them. The gap was only ever meant to sit between the status
+  dot and the wordmark, which it now does.
+- Added a `--brand-text` token and pointed `.brand` at it: `#ffffff` in dark
+  mode, and the existing `#16202b` in light mode. Pure white in both themes
+  would have put white text on the white `--surface` topbar, so only the dark
+  palette — the one in use — is literally white.
+- Dropped the now-unused `.brand-thin` rule. With the halves sharing a weight
+  and a color, it had no remaining effect.
+
+### Files touched
+
+- `app/templates/base.html`, `app/static/app.css`
+
+### Verification
+
+- Rebuilt with `./update.sh`, which reported healthy.
+- Fetched `/admin` from the container as `admin` and confirmed the served markup
+  is `CodePR-Monitor` with no inner span, and that `/static/app.css` carries
+  `--brand-text: #16202b`, the dark-mode `#ffffff`, and `color: var(--brand-text)`.
+- No headless browser is installed on this machine, so the result was verified
+  at the markup and stylesheet level rather than from a rendered screenshot.
 
 ### What changed
 

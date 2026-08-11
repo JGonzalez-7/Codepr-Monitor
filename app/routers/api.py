@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from ..access import visible_site_ids
 from ..db import get_db
 from ..models import User
 from ..presenters import build_site_cards, summarize
@@ -23,8 +24,17 @@ def healthz() -> dict[str, str]:
 def api_status(
     user: User = Depends(require_user), db: Session = Depends(get_db)
 ) -> dict:
-    """Current status of every visible site, polled by the status page."""
-    cards = build_site_cards(db, include_inactive=user.is_admin, history_limit=1)
+    """Current status of every visible site, polled by the status page.
+
+    Filtered the same way as the page itself — the poll must not hand a client
+    the status of pages they cannot see.
+    """
+    cards = build_site_cards(
+        db,
+        include_inactive=user.is_admin,
+        history_limit=1,
+        only_site_ids=visible_site_ids(user),
+    )
     return {
         "summary": summarize(cards),
         "sites": [

@@ -15,7 +15,7 @@ from ..models import Check, Site, Ticket, TicketStatus, User
 from ..monitor import check_all_sites
 from ..odoo import sync_ticket
 from ..presenters import build_site_cards, summarize
-from ..security import require_admin
+from ..security import hash_password, require_admin
 from ..templating import templates
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -184,6 +184,141 @@ def update_site(
         site.uses_cf_access = uses_cf_access
         db.commit()
     return RedirectResponse("/admin/sites", status_code=303)
+
+
+# --- Users ---------------------------------------------------------------
+
+USERNAME_RE = re.compile(r"^[a-z0-9_.-]{3,64}$")
+MIN_PASSWORD_LENGTH = 10
+
+
+def _render_users(
+    request: Request,
+    db: Session,
+    admin: User,
+    *,
+    error: str | None = None,
+    notice: str | None = None,
+    status_code: int = 200,
+):
+    users = db.scalars(select(User).order_by(User.is_admin.desc(), User.username)).all()
+    sites = db.scalars(select(Site).order_by(Site.name)).all()
+    return templates.TemplateResponse(
+        request,
+        "admin/users.html",
+        {
+            "user": admin,
+            "users": users,
+            "sites": sites,
+            "error": error,
+            "notice": notice,
+            "min_password_length": MIN_PASSWORD_LENGTH,
+        },
+        status_code=status_code,
+    )
+
+
+@router.get("/users", response_class=HTMLResponse)
+def manage_users(
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return _render_users(request, db, user)
+
+
+@router.post("/users")
+def create_user(
+    request: Request,
+    username: str = Form(""),
+    full_name: str = Form(""),
+    email: str = Form(""),
+    password: str = Form(""),
+    is_admin: bool = Form(False),
+    site_ids: list[int] = Form(default=[]),
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Create a client account and grant it the pages it should see."""
+    username = username.strip().lower()
+    full_name = full_name.strip()
+
+    if not USERNAME_RE.match(username):
+        return _render_users(
+            request,
+            db,
+            user,
+            error=(
+                "Usernames are 3–64 characters, lowercase letters, digits, "
+                "dot, dash, or underscore."
+            ),
+            status_code=400,
+        )
+
+    if db.scalar(select(User).where(User.username == username)) is not None:
+        return _render_users(
+            request, db, user, error=f"The username {username} is taken.", status_code=400
+        )
+
+    if not full_name:
+        return _render_users(
+            request, db, user, error="Add the person's full name.", status_code=400
+        )
+
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return _render_users(
+            request,
+            db,
+            user,
+            error=f"Passwords must be at least {MIN_PASSWORD_LENGTH} characters.",
+            status_code=400,
+        )
+
+    granted = db.scalars(select(Site).where(Site.id.in_(site_ids))).all() if site_ids else []
+
+    # The password is hashed here and never stored or echoed back; the admin who
+    # typed it is the one who passes it on.
+    account = User(
+        username=username,
+        full_name=full_name[:128],
+        email=email.strip()[:255],
+        password_hash=hash_password(password),
+        is_admin=is_admin,
+        sites=list(granted),
+    )
+    db.add(account)
+    db.commit()
+
+    what = "an admin" if is_admin else f"{len(granted)} page(s)"
+    return _render_users(
+        request, db, user, notice=f"Created {username} with {what}."
+    )
+
+
+@router.post("/users/{user_id}/access")
+def update_user_access(
+    request: Request,
+    user_id: int,
+    site_ids: list[int] = Form(default=[]),
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Replace the set of pages a user can see and raise tickets about."""
+    account = db.get(User, user_id)
+    if account is None:
+        return _render_users(
+            request, db, user, error="That account no longer exists.", status_code=404
+        )
+
+    account.sites = list(db.scalars(select(Site).where(Site.id.in_(site_ids))).all()) if site_ids else []
+    db.commit()
+
+    return _render_users(
+        request,
+        db,
+        user,
+        notice=f"Updated the pages {account.username} can see.",
+    )
 
 
 # --- Uptime Kuma ---------------------------------------------------------

@@ -53,7 +53,9 @@ The app creates four accounts: `admin`, plus `user1`, `user2`, and `user3`.
 Their passwords are the `SEED_ADMIN_PASSWORD` and `SEED_USER_PASSWORD` values
 from your `.env`, and they are also listed in **`SECRETS.md`** in this folder.
 
-Sign in as `admin` for the dashboard, or as `user1` for the client view.
+Sign in as `admin` for the dashboard, or as `user1` for the client view. Each
+seeded client starts with one page: `user1` → HBPR, `user2` → Holberton
+Scholarship, `user3` → Odoo. See [Who sees what](#who-sees-what).
 
 > **Set the seed passwords in `.env` before you start the stack.** Nothing
 > writes credentials into the container, so if you leave them blank, Docker
@@ -118,6 +120,49 @@ Admins can add, edit, deactivate, and re-point pages under **Pages**
 (`/admin/sites`) — the seed list is only a starting point. Changing a page's URL
 clears its check history, so the displayed status always reflects the URL
 actually being checked.
+
+## Who sees what
+
+A client sees only the pages assigned to their account. That covers the status
+view, the `/api/status` poll behind it, the pages offered in the ticket form,
+and which page a ticket may be filed against. An admin is unrestricted.
+
+| Account | Pages |
+| --- | --- |
+| `admin` | Every page, plus Pages, Users, and the ticket queue |
+| `user1` | HBPR |
+| `user2` | Holberton Scholarship |
+| `user3` | Odoo — code.pr |
+
+Manage this under **Users** (`/admin/users`), where an admin can create an
+account and tick the pages it should hold, or change an existing account's
+pages. A client with no pages assigned sees an empty state explaining that,
+rather than an empty dashboard — access defaults to nothing, not everything.
+
+The ticket form only offers pages the client holds, and the same rule is
+re-checked when the form is submitted, since the page id travels in the request
+body and a dropdown is not a security boundary.
+
+Those grants apply when an account is **created**. Assignments are never
+rewritten on restart, so an existing deployment keeps whatever an admin last
+set under Users.
+
+### Screenshots on tickets
+
+Clients can attach up to `MAX_ATTACHMENTS_PER_TICKET` images (default 3) of at
+most `MAX_ATTACHMENT_MB` each (default 5) to a ticket. They appear as thumbnails
+on the client's own ticket list and on the admin queue.
+
+The bytes are stored in the database, not on disk: the app container mounts no
+volume, so its filesystem does not survive a rebuild, while the Postgres volume
+does. It also means every screenshot is served by an authenticated route that
+checks the requester is the submitter or an admin, instead of sitting at a
+guessable static URL.
+
+The accepted formats — PNG, JPEG, GIF, WebP — are identified from the file's
+leading bytes rather than from the type the browser claims. SVG is refused on
+purpose: it can carry script, so serving one back to an admin would be a stored
+XSS vector.
 
 ### The HBPR target
 

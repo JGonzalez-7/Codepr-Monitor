@@ -41,6 +41,16 @@
             <td>
               {{ ticket.subject }}
               {% if ticket.body %}<div class="muted">{{ ticket.body }}</div>{% endif %}
+              {% if ticket.attachments %}
+                <div class="thumbs">
+                  {% for shot in ticket.attachments %}
+                    <a class="thumb" href="/tickets/attachments/{{ shot.id }}"
+                       target="_blank" rel="noopener" title="{{ shot.filename }}">
+                      <img src="/tickets/attachments/{{ shot.id }}" alt="{{ shot.filename }}" loading="lazy">
+                    </a>
+                  {% endfor %}
+                </div>
+              {% endif %}
             </td>
             <td class="nowrap">{{ ticket.user.full_name }}<div class="muted">{{ ticket.user.username }}</div></td>
             <td class="nowrap">{{ ticket.submitted_at | format_dt }}</td>

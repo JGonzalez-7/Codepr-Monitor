@@ -9,6 +9,7 @@
   --border: #dde3ea;
   --text: #16202b;
   --muted: #5c6b7a;
+  --brand-text: #16202b;
   --accent: #1f5f8b;
   --accent-contrast: #ffffff;
 
@@ -36,6 +37,7 @@
     --border: #2c3843;
     --text: #e7edf3;
     --muted: #9aabba;
+    --brand-text: #ffffff;
     --accent: #5aa9dd;
     --accent-contrast: #0f151b;
 
@@ -85,10 +87,8 @@ a { color: var(--accent); }
   font-size: 1.05rem;
   letter-spacing: -.01em;
   text-decoration: none;
-  color: var(--text);
+  color: var(--brand-text);
 }
-
-.brand-thin { color: var(--muted); }
 
 .brand-dot {
   width: .7rem;
@@ -289,6 +289,63 @@ input:focus, select:focus, textarea:focus {
 }
 
 textarea { min-height: 130px; resize: vertical; }
+
+input[type="file"] {
+  width: 100%;
+  padding: .55rem .75rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: .9rem;
+  cursor: pointer;
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: .75rem;
+  padding: .35rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: .88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+input[type="file"]::file-selector-button:hover { border-color: var(--accent); color: var(--accent); }
+
+.user-head {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+
+.user-head .tag { margin-left: auto; }
+
+/* Attached screenshots, shown on both the client and admin ticket lists. */
+.thumbs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+
+.thumb {
+  display: block;
+  line-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.thumb:hover { border-color: var(--accent); }
+
+.thumb img {
+  display: block;
+  width: 84px;
+  height: 60px;
+  object-fit: cover;
+}
 
 .radio-row { display: flex; gap: 1.25rem; flex-wrap: wrap; }
 .radio-row label, .check-row label { font-weight: 500; display: inline-flex; align-items: center; gap: .4rem; margin: 0; }
