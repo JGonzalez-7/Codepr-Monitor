@@ -22,7 +22,7 @@ from .security import hash_password
 log = logging.getLogger(__name__)
 settings = get_settings()
 
-# The hbpr repo is private, so its live URL comes from HBPR_URL.
+# The HBPR URL comes from HBPR_URL so it can be re-pointed per environment.
 SEED_SITES = [
     {
         "slug": "hbpr",

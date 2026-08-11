@@ -88,7 +88,7 @@ a { color: var(--accent); }
   color: var(--text);
 }
 
-.brand-thin { font-weight: 400; color: var(--muted); }
+.brand-thin { color: var(--muted); }
 
 .brand-dot {
   width: .7rem;

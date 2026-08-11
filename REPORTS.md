@@ -4,6 +4,65 @@ A running log of the work done on this project. Newest entries first.
 
 ---
 
+## 2026-08-11 — Pointed the HBPR check at the live site
+
+### What changed
+
+- Replaced the `https://github.com/adamb/hbpr` placeholder with the real HBPR
+  site, `https://holbertonschoolpr.com/`, as the default `hbpr_url` in
+  `app/config.py` and the `HBPR_URL` value in `.env.example`. `HBPR_URL` still
+  overrides it, so a staging host can be watched without a code change.
+- Updated the `.env` used for local runs to the same URL. It is gitignored, so
+  this is a local-only change.
+- Rewrote the README "hbpr target" section, which documented the private-repo
+  caveat and the expected 404, and filled in the real URL in the monitored-pages
+  table. Noted that the seed only inserts missing pages, so an existing
+  deployment keeps the URL in its database until an admin edits it under
+  **Pages**.
+- Refreshed the now-stale comments in `app/config.py` and `app/seed.py`.
+
+### Files touched
+
+- `app/config.py`, `app/seed.py`, `.env.example`, `README.md`, `.env` (untracked)
+
+### Verification
+
+- Probed the URL directly: `https://holbertonschoolpr.com/` returns **200** with
+  no redirect.
+- Seeded a throwaway SQLite database with a scratch `SECRETS_FILE`, so the real
+  `SECRETS.md` was untouched. The seeder logged
+  `Seeded site hbpr -> https://holbertonschoolpr.com/` and the monitor's first
+  pass logged `check hbpr -> up (HTTP 200)`.
+- Re-pointed the existing local development database through the real admin form
+  (`POST /admin/sites/1`) rather than by direct SQL, which exercised the
+  history-clearing path. A forced re-check then moved hbpr from
+  `down (HTTP 404)` to `up (HTTP 200)`.
+
+---
+
+## 2026-08-11 — Matched the "-Monitor" wordmark weight to "CodePR"
+
+### What changed
+
+- Removed `font-weight: 400` from `.brand-thin` in `app/static/app.css`, so
+  `-Monitor` inherits the `.brand` weight of 700 and renders in the same face as
+  `CodePR`. Both halves already shared the `--font` family; the weight was the
+  only typographic difference. Kept `color: var(--muted)` so the second half
+  still reads as secondary.
+
+### Files touched
+
+- `app/static/app.css`
+
+### Verification
+
+- Ran the app locally with `DATABASE_URL=sqlite:///./codepr_monitor.db` on port
+  8077. Confirmed `/static/app.css` serves the updated `.brand-thin` rule and
+  that the authenticated `/admin` topbar renders the
+  `CodePR<span class="brand-thin">-Monitor</span>` markup the rule applies to.
+
+---
+
 ## 2026-08-11 — Added a step-by-step run guide and settled where SECRETS.md lives
 
 ### What changed

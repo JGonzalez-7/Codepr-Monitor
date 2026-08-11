@@ -101,7 +101,7 @@ This starts the app only — Uptime Kuma and PostgreSQL are not included, so the
 
 | Page | URL | Notes |
 | --- | --- | --- |
-| HBPR | `HBPR_URL` | See caveat below |
+| HBPR | https://holbertonschoolpr.com/ | Returns 200; override with `HBPR_URL` |
 | Holberton Scholarship | https://scholarship.holbertonschoolpr.com/ | Returns 200 |
 | Odoo — code.pr | https://odoo.code.pr | Behind Cloudflare Access |
 
@@ -110,16 +110,17 @@ Admins can add, edit, deactivate, and re-point pages under **Pages**
 clears its check history, so the displayed status always reflects the URL
 actually being checked.
 
-### The hbpr target
+### The HBPR target
 
-`https://github.com/adamb/hbpr/` returns 404 to an unauthenticated request, so
-the repository is private and its deployed URL cannot be discovered from here.
-A source repository is also not a monitorable target — what matters is the site
-it deploys to.
+The HBPR page monitors `https://holbertonschoolpr.com/`, which answers `200` and
+needs no special handling. This replaces the earlier placeholder that pointed at
+the private `github.com/adamb/hbpr` repository — a source repository was never a
+monitorable target; what matters is the site it deploys to.
 
-Set `HBPR_URL` in `.env` to that live URL before first boot, or edit the page in
-the admin UI afterwards. Until then the entry monitors the GitHub URL and will
-correctly report **Offline (HTTP 404)**.
+`HBPR_URL` in `.env` still overrides the URL, so a staging host can be watched
+instead without a code change. Because the seed only inserts missing pages, an
+existing deployment keeps the URL already in its database: change it under
+**Pages** (`/admin/sites`), which also clears the stale check history.
 
 ### Cloudflare Access and odoo.code.pr
 

@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 15.0
     history_retention_days: int = 30
 
-    # The hbpr repo is private, so its deployed URL has to be supplied.
-    hbpr_url: str = "https://github.com/adamb/hbpr"
+    # The live HBPR site. Override to re-point the check without a code change.
+    hbpr_url: str = "https://holbertonschoolpr.com/"
 
     # Cloudflare Access service token, used for odoo.code.pr.
     cf_access_client_id: str = ""
