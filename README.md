@@ -60,6 +60,15 @@ Sign in as `admin` for the dashboard, or as `user1` for the client view.
 > generates random passwords you cannot read back — and because the database
 > volume survives a rebuild, seeding will not run again to replace them.
 
+### Updating the container after a code change
+
+```bash
+./update.sh
+```
+
+That rebuilds the image, recreates the container, and waits for it to report
+healthy. Use `./update.sh --all` when `docker-compose.yml` itself changed.
+
 ### Stopping it
 
 ```bash

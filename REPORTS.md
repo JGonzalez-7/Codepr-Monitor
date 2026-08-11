@@ -4,7 +4,41 @@ A running log of the work done on this project. Newest entries first.
 
 ---
 
-## 2026-08-11 — Pointed the HBPR check at the live site
+## 2026-08-11 — Added update.sh, a one-command image rebuild
+
+### What changed
+
+- Added `update.sh`: rebuilds the app image from the working tree, recreates the
+  container, then polls `/healthz` until the app answers. It reads the published
+  port from `docker compose port` instead of assuming 8090, so a changed port
+  mapping cannot produce a false "unhealthy" result. On timeout it prints the
+  last 40 log lines and exits non-zero.
+- Supported `--all` for rebuilding every service, `--help`, and a usage error
+  with exit code 2 for anything else. The script detects `docker compose` versus
+  the older `docker-compose`, and refuses to run without a `.env`.
+- Documented the update path in `README.md` under **Updating it after a code
+  change**, including a table of what each kind of change requires. Recorded the
+  reason the rebuild is needed at all: the Dockerfile copies `app/` in at build
+  time and nothing is bind-mounted, so a running container serves the code it
+  was built with and a plain `docker compose up` looks like a no-op.
+- Wrote down two things that had caused confusion: pushing to GitHub does not
+  touch any container, since the build reads files on disk regardless of commit
+  state; and no rebuild changes data, because the Postgres volume survives and
+  seeding only inserts pages that do not already exist.
+
+### Files touched
+
+- `update.sh` (new), `README.md`
+
+### Verification
+
+- Ran `bash -n update.sh`, plus `--help` and a bad-argument run, which printed
+  the usage line and exited 2.
+- End-to-end smoke test in both directions: appended a marker comment to
+  `app/static/app.css`, ran `./update.sh`, and confirmed the container served
+  the marker. Removed the marker, ran `./update.sh` again, and confirmed it was
+  gone. The script reported healthy on both runs, and `app/static/app.css` was
+  left byte-identical to its committed state.
 
 ### What changed
 
