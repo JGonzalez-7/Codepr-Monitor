@@ -1,0 +1,27 @@
+// scripts/ runs on your machine under Node (via tsx), not in the Workers
+// runtime. It needs @types/node, which conflicts with @cloudflare/workers-types
+// on globals both declare, so it gets its own compiler options.
+//
+// src/password.ts is deliberately in both projects: it is the one module the
+// seed script shares with the Worker, and it uses only Web Crypto, which Node
+// and Workers both provide.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["scripts/**/*.ts", "src/password.ts"],
+  "exclude": ["node_modules"]
+}

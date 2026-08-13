@@ -1,0 +1,9 @@
+# Credentials — never commit
+.dev.vars
+SECRETS.md
+seed.generated.sql
+
+node_modules/
+.wrangler/
+dist/
+worker-configuration.d.ts

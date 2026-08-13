@@ -1,0 +1,71 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  "name": "cpr-monitor",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-08-01",
+
+  // Serves /static/* straight from ./public. Anything that is not a file there
+  // falls through to the Worker, which is what routes every page.
+  "assets": {
+    "directory": "./public"
+  },
+
+  // Replace database_id with the value printed by:
+  //   npx wrangler d1 create cpr-monitor
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cpr-monitor",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Ticket screenshots. They are too large for a D1 row, and R2 keeps every
+  // read behind the authenticated route in src/routes/client.tsx rather than at
+  // a guessable public URL. Create it with:
+  //   npx wrangler r2 bucket create cpr-monitor-screenshots
+  "r2_buckets": [
+    {
+      "binding": "SCREENSHOTS",
+      "bucket_name": "cpr-monitor-screenshots"
+    }
+  ],
+
+  // Replaces the background thread the Python app ran. One minute is the
+  // shortest cadence Cron Triggers allow; CHECK_INTERVAL_SECONDS below only
+  // describes it on the dashboard, it does not set it.
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  // Non-secret configuration only. SECRET_KEY, the Cloudflare Access token, and
+  // the Odoo credentials are secrets — set them with `wrangler secret put`, and
+  // never add them to this file, which is committed.
+  "vars": {
+    "SESSION_COOKIE_NAME": "codepr_session",
+    "SESSION_MAX_AGE_SECONDS": "43200",
+
+    "CHECK_INTERVAL_SECONDS": "60",
+    "REQUEST_TIMEOUT_SECONDS": "15",
+    "HISTORY_RETENTION_DAYS": "30",
+
+    "MAX_ATTACHMENT_MB": "5",
+    "MAX_ATTACHMENTS_PER_TICKET": "3",
+
+    // Cost of one password hash. Higher is better against offline cracking, but
+    // it is charged as CPU time on every login: the Workers Free plan allows
+    // 10 ms per request, which 100k iterations will exceed. See worker/README.md.
+    "PBKDF2_ITERATIONS": "100000",
+
+    "UPTIME_KUMA_EMBED_URL": "http://localhost:3001",
+
+    "ODOO_ENABLED": "false",
+    "ODOO_URL": "https://odoo.code.pr"
+  }
+}

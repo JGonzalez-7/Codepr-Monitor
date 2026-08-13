@@ -1,0 +1,25 @@
+{
+  "name": "cpr-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json",
+    "cf-typegen": "wrangler types",
+    "seed": "tsx scripts/seed.ts",
+    "migrate:local": "wrangler d1 migrations apply cpr-monitor --local",
+    "migrate:remote": "wrangler d1 migrations apply cpr-monitor --remote"
+  },
+  "dependencies": {
+    "hono": "^4.13.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260813.1",
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.123.0"
+  }
+}

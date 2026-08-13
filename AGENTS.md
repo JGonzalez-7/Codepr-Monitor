@@ -37,6 +37,26 @@ scholarship portal, and the Odoo instance at odoo.code.pr.
   by the bundled addon in `odoo-addon/codepr_monitor`.
 - Testing: performed locally before deployment.
 
+### Second deployment: Cloudflare Workers (`worker/`)
+
+The same app also runs as the `cpr-monitor` Worker, deployed from GitHub. It is
+a **rewrite, not a port**, and an independent deployment with its own database —
+nothing is shared with the Docker stack, including accounts.
+
+- Stack: Hono, Hono JSX, D1 (SQLite), R2, Cron Triggers, Workers Assets.
+- The Workers runtime has no filesystem, no threads, and no raw TCP sockets, so
+  bcrypt, psycopg, the monitor thread, and the Uptime Kuma container all had to
+  be replaced. `worker/README.md` has the table of what became what.
+- Passwords there are PBKDF2-HMAC-SHA256 on Web Crypto, not bcrypt. **The two
+  deployments' password hashes are not interchangeable in either direction.**
+- Uptime Kuma cannot run on Workers. It has to be hosted separately, with
+  `UPTIME_KUMA_EMBED_URL` pointed at it.
+- Seeding runs locally via `worker/scripts/seed.ts`, not on first boot.
+- Every security rule below applies there too, and is implemented there.
+- Work on one deployment does not implicitly apply to the other. A change to
+  behaviour that should hold everywhere has to be made in both `app/` and
+  `worker/src/`.
+
 ### Layout
 
 - `app/main.py` — app factory, lifespan (schema, seeding, monitor thread), error handling.

@@ -1,0 +1,26 @@
+# Copy to .dev.vars for `wrangler dev`. .dev.vars is gitignored.
+#
+# In production these are Worker *secrets*, not vars — set them with
+# `wrangler secret put <NAME>` (or in the dashboard under Settings → Variables).
+# Never put them in wrangler.jsonc, which is committed.
+
+# Signs session cookies. Generate with:
+#   node -e "console.log(crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,''))"
+SECRET_KEY=dev-only-insecure-key-change-me
+
+# --- Cloudflare Access (odoo.code.pr) -----------------------------------
+# Without a service token every probe of odoo.code.pr just sees the Access
+# login redirect, which says nothing about Odoo. Create one under
+# Zero Trust → Access → Service Auth, then add it to the odoo.code.pr policy
+# with a "Service Auth" include rule.
+CF_ACCESS_CLIENT_ID=
+CF_ACCESS_CLIENT_SECRET=
+
+# --- Odoo push ----------------------------------------------------------
+ODOO_DB=
+ODOO_USERNAME=
+ODOO_PASSWORD=
+
+# --- Seeding (used by `npm run seed`, never read by the Worker) ----------
+SEED_ADMIN_PASSWORD=
+SEED_USER_PASSWORD=

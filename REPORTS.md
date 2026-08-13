@@ -4,6 +4,117 @@ A running log of the work done on this project. Newest entries first.
 
 ---
 
+## 2026-08-13 — Added a Cloudflare Workers deployment as `cpr-monitor`
+
+### What changed
+
+Rebuilt the application as a native Cloudflare Worker under `worker/`, deployed
+from GitHub. The Python app and its Docker stack are untouched and still run;
+this is a second, independent deployment with its own database.
+
+The Workers runtime has no filesystem, no threads, and no raw TCP sockets, so a
+straight port was not possible. Four dependencies had to be replaced outright:
+
+- **bcrypt → PBKDF2-HMAC-SHA256 on Web Crypto** (`worker/src/password.ts`).
+  Compiled extensions cannot run on Workers at all. The stored form carries its
+  own iteration count (`pbkdf2_sha256$<iterations>$<salt>$<hash>`), so raising
+  the cost later leaves existing hashes verifiable. **This is why accounts have
+  to be re-seeded rather than copied — bcrypt hashes cannot be verified here.**
+- **psycopg/PostgreSQL → D1** (`worker/migrations/0001_init.sql`,
+  `worker/src/db.ts`). The SQLAlchemy models became one SQL migration and a
+  hand-written query layer. Two shapes are driven by D1's billing and limits:
+  ticket lists are capped at 500 rows, and anything that grows with the data is
+  filtered with a correlated subquery rather than an `IN (?, ?, …)` list, since
+  D1 allows only 100 bound parameters per statement.
+- **Screenshot `BYTEA` column → R2** (`worker/src/routes/client.tsx`). The bytes
+  exceed what a D1 row holds. Keys are random UUIDs and never exposed, so reads
+  still go through the authenticated route that checks the requester is the
+  submitter or an admin.
+- **The monitor thread → a Cron Trigger** (`worker/src/index.tsx`,
+  `worker/src/monitor.ts`). One round per minute, which is the shortest cadence
+  Cron Triggers allow. Redirects are followed by hand so every hop can still be
+  inspected for a Cloudflare Access wall. Probes run concurrently because the
+  round has to finish inside one invocation.
+
+Also changed, as consequences rather than choices:
+
+- Added a `site_stats` rollup table, recomputed by the cron. The Python version
+  aggregated the raw check history on every render — roughly 1,440 rows per site
+  per page load, against a status page that polls itself every 30 seconds, which
+  would spend D1's daily row-read allowance on the poll alone.
+- Jinja2 templates became Hono JSX (`worker/src/views/`), one file per former
+  template. Autoescaping is on by default, as it was. `app.css` is served
+  unchanged through Workers Assets.
+- The Odoo push moved from a background thread to `ctx.waitUntil`, keeping it
+  off the client's submission path.
+- First-boot seeding moved to `worker/scripts/seed.ts`, run locally. A Worker
+  has no startup hook that could hold a credential, so the script hashes
+  passwords with the same module the Worker verifies them with, writes
+  `SECRETS.md` on the developer's machine, and emits SQL to apply to D1. Both
+  outputs are gitignored.
+- **Uptime Kuma cannot run on Workers.** `/admin/kuma` still embeds
+  `UPTIME_KUMA_EMBED_URL`, but Kuma has to be hosted elsewhere; the page now says
+  so instead of describing a companion container.
+
+Every access rule from the Python app is preserved: admin-only routes, the
+client page-scoping, re-checking the submitted `site_id` against the user's
+grants, `/impersonate/stop` outside the admin area, impersonation invalidated
+when the admin behind it loses access, identical login errors for unknown users
+and wrong passwords, and a Cloudflare Access redirect classified `degraded`
+rather than `up`.
+
+### Files touched
+
+New, all under `worker/`: `wrangler.jsonc`, `package.json`, `tsconfig.json`,
+`tsconfig.scripts.json`, `.gitignore`, `.dev.vars.example`, `README.md`,
+`migrations/0001_init.sql`, `scripts/seed.ts`, `public/static/app.css` (copied),
+`src/{index.tsx,types.ts,config.ts,db.ts,password.ts,security.ts,access.ts,attachments.ts,monitor.ts,odoo.ts,presenters.ts,format.ts}`,
+`src/routes/{auth.tsx,client.tsx,admin.tsx,api.ts}`,
+`src/views/{layout.tsx,siteCard.tsx,status.tsx,tickets.tsx}`,
+`src/views/admin/{dashboard.tsx,tickets.tsx,sites.tsx,users.tsx,kuma.tsx}`.
+
+Modified: `REPORTS.md`, `CLAUDE.md`, `AGENTS.md`. No file belonging to the
+Python app was changed.
+
+### Verification
+
+`npm run typecheck` passes for both the Worker and the Node script projects.
+`npm audit` reports 0 vulnerabilities. The app was exercised against
+`wrangler dev` with a seeded local D1 and R2, not by inspection:
+
+- Login succeeds with the seeded password and answers 401 on a wrong one, with
+  the same message either way. Accounts created through the admin UI can then
+  log in, so the PBKDF2 create → verify round trip holds.
+- All eight authenticated routes return 200 for an admin; a client gets 403 on
+  every `/admin` route and sees only their own page in `/api/status`.
+- A real monitor round classified the three seeded pages correctly: HBPR and the
+  scholarship portal `up`, and `odoo.code.pr` **`degraded` with "Blocked by
+  Cloudflare Access"** — the case that must never be reported as online.
+- Ticket submission with a PNG works; posting a `site_id` the client does not
+  hold is refused 403, an SVG upload is refused 400, and a blank subject 400.
+- A screenshot is served to its submitter and to an admin, 404 to another
+  client, and redirects an anonymous request to `/login`. The response carries
+  `X-Content-Type-Options: nosniff` and a `default-src 'none'` CSP.
+- Impersonation: an admin acting as a client gets 403 on `/admin`, sees the
+  banner and only that client's page, and `/impersonate/stop` returns the
+  session; the same call on a normal session is refused 400.
+- Ticket text containing `<script>` and `<img onerror=…>` renders escaped, with
+  no executable markup in the output.
+- Changing a page's URL cleared that page's check history and its rollup row,
+  leaving other pages untouched.
+- The cron handler, triggered via `/cdn-cgi/handler/scheduled`, probed every
+  page and refreshed the rollup. One page recorded `down` with "Could not
+  connect" — that target is DNS-blocked in the test sandbox, which is the
+  failure path behaving correctly rather than an app fault.
+- `/api/status` answers unauthenticated callers with a JSON 401 rather than a
+  redirect, while browser routes redirect to `/login`.
+
+Not verified: deployment to Cloudflare itself, the GitHub build connection, and
+the Odoo mirror. All three need credentials and a Cloudflare account, and the
+D1 `database_id` in `wrangler.jsonc` is still a placeholder.
+
+---
+
 ## 2026-08-11 — Moved the Docker stack back to PostgreSQL
 
 ### What changed
